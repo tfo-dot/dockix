@@ -1,0 +1,8 @@
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tree-sitter = "0.26.6"
+tree-sitter-json = "0.24.8"
