@@ -1,0 +1,156 @@
+openapi: 3.0.0
+info:
+  title: Dockix Backend API
+  description: API documentation for the Dockix repository analysis and documentation generation backend.
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:3000
+    description: Local development server
+
+tags:
+  - name: Repository Management
+    description: Endpoints for cloning and listing local repositories
+  - name: Code Analysis
+    description: Endpoints for parsing and analyzing repository structure
+  - name: Documentation Generation
+    description: Endpoints for generating HTML and PDF documentation
+
+paths:
+  /clone:
+    post:
+      tags:
+        - Repository Management
+      summary: Clone a repository
+      description: Clones a remote git repository into the local base directory.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloneRequest'
+      responses:
+        '200':
+          description: Repository cloned successfully
+          content:
+            application/json:
+              schema:
+                type: string
+                example: "Repository cloned successfully"
+        '400':
+          description: Directory already exists or invalid payload
+
+  /repos:
+    get:
+      tags:
+        - Repository Management
+      summary: List available repositories
+      description: Returns a list of all repositories currently stored in the base directory.
+      responses:
+        '200':
+          description: A list of repository names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example: ["dockix", "my-python-project"]
+
+  /analyze/{repo_name}:
+    get:
+      tags:
+        - Code Analysis
+      summary: Basic repository analysis
+      description: Analyzes the directory structure of the specified repository.
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
+          description: The name of the local repository to analyze
+      responses:
+        '200':
+          description: Successful analysis
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Repository not found
+
+  /analyze/{repo_name}/elements:
+    get:
+      tags:
+        - Code Analysis
+      summary: Extract Python code elements
+      description: Scans for .py files, parses the syntax, and returns detected classes, methods, and extracted docstrings.
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
+          description: The name of the local repository
+      responses:
+        '200':
+          description: Extracted code elements
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /analyze/{repo_name}/diagram:
+    get:
+      tags:
+        - Code Analysis
+      summary: Get class structure diagram data
+      description: Provides structural relationship data required to visualize class diagrams for the analyzed code.
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
+          description: The name of the local repository
+      responses:
+        '200':
+          description: Diagram relationship data
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /docs/{repo_name}/html:
+    post:
+      tags:
+        - Documentation Generation
+      summary: Generate HTML documentation
+      description: Triggers the generation of the HTML documentation structure based on the extracted code elements.
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
+          description: The name of the local repository
+      responses:
+        '200':
+          description: HTML documentation generated successfully
+
+components:
+  schemas:
+    CloneRequest:
+      type: object
+      required:
+        - url
+        - name
+      properties:
+        url:
+          type: string
+          description: The URL of the git repository to clone
+          example: "https://github.com/example/repo.git"
+        name:
+          type: string
+          description: The target directory name for the cloned repository
+          example: "example-repo"
