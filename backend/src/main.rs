@@ -4,6 +4,7 @@ mod parsers;
 mod repo;
 mod handlers;
 mod auth;
+mod sync;
 
 use axum::{
     middleware,
@@ -24,6 +25,8 @@ async fn main() {
     if !base_dir.exists() {
         fs::create_dir_all(&base_dir).expect("Failed to create base directory");
     }
+
+    sync::start_sync_task(base_dir.clone());
 
     let config = Arc::new(AppConfig { base_dir });
 
