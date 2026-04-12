@@ -3,8 +3,10 @@ mod errors;
 mod parsers;
 mod repo;
 mod handlers;
+mod auth;
 
 use axum::{
+    middleware,
     routing::{get, post},
     Router,
 };
@@ -29,6 +31,7 @@ async fn main() {
         .route("/clone", post(clone_handler))
         .route("/repos", get(list_repos_handler))
         .route("/analyze/:repo_name", get(analyze_repo_handler))
+        .layer(middleware::from_fn(auth::require_api_key))
         .with_state(config);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
