@@ -23,9 +23,8 @@ impl IntoResponse for AppError {
         let (status, message) = match self {
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             AppError::AlreadyExists(msg) => (StatusCode::CONFLICT, msg),
-            AppError::GitError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            AppError::GitError(msg) | AppError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
             AppError::ParseError(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
-            AppError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
 
         let body = ErrorResponse { error: message };
@@ -35,13 +34,13 @@ impl IntoResponse for AppError {
 
 impl From<git2::Error> for AppError {
     fn from(err: git2::Error) -> Self {
-        AppError::GitError(format!("Git error: {}", err))
+        AppError::GitError(format!("Git error: {err}"))
     }
 }
 
 impl From<std::io::Error> for AppError {
     fn from(err: std::io::Error) -> Self {
-        AppError::InternalError(format!("IO error: {}", err))
+        AppError::InternalError(format!("IO error: {err}"))
     }
 }
 

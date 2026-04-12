@@ -6,7 +6,7 @@ use axum::{
 use std::sync::Arc;
 use axum::extract::Path;
 
-use crate::models::*;
+use crate::models::{AppConfig, CloneRequest};
 use crate::errors::AppError;
 use crate::repo;
 
@@ -47,7 +47,7 @@ pub async fn analyze_repo_handler(
 
     let parsed_data = tokio::task::spawn_blocking(move || {
         repo::analyze_directory(repo_name, repo_path)
-    }).await??;
+    }).await?;
 
     Ok(Json(parsed_data))
 }

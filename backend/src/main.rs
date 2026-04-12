@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::models::AppConfig;
-use crate::handlers::*;
+use crate::handlers::{clone_handler, list_repos_handler, analyze_repo_handler};
 
 #[tokio::main]
 async fn main() {

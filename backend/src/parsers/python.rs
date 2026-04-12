@@ -2,7 +2,7 @@ use std::fs;
 use tree_sitter::{Parser, Query, QueryCursor};
 
 use crate::errors::AppError;
-use crate::models::*;
+use crate::models::{ParsedFile, ClassDoc, FunctionDoc};
 use super::LanguageParser;
 
 pub struct PythonParser;
@@ -23,7 +23,7 @@ impl LanguageParser for PythonParser {
         let tree = parser.parse(&source_code, None)
             .ok_or(AppError::ParseError("Failed to parse Python code".to_string()))?;
 
-        let query_string = r#"
+        let query_string = r"
             (function_definition
                 name: (identifier) @func.name
                 body: (block (expression_statement (string) @func.docstring))?
@@ -32,10 +32,10 @@ impl LanguageParser for PythonParser {
                 name: (identifier) @class.name
                 body: (block (expression_statement (string) @class.docstring))?
             )
-        "#;
+        ";
 
         let query = Query::new(&language, query_string)
-            .map_err(|e| AppError::ParseError(format!("Invalid query: {}", e)))?;
+            .map_err(|e| AppError::ParseError(format!("Invalid query: {e}")))?;
         let mut cursor = QueryCursor::new();
         let matches = cursor.matches(&query, tree.root_node(), source_bytes);
 
