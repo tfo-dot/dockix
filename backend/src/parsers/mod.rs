@@ -4,7 +4,6 @@ pub mod javascript;
 use crate::errors::AppError;
 use crate::models::ParsedFile;
 
-// To add a new language, create a new file in parsers/ (e.g. rust.rs), implement LanguageParser trait, register the extension in get_parser_for_extension()
 // TODO: ADD RUST IN ORDER TO GENERATE DOCUMENTATION ON DOCKIX USING DOCKIX (In rust we trust(elite ball knowledge required))
 pub trait LanguageParser {
     fn parse_file(

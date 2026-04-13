@@ -2,7 +2,7 @@ use std::fs;
 use tree_sitter::{Parser, Query, QueryCursor};
 
 use crate::errors::AppError;
-use crate::models::*;
+use crate::models::{ParsedFile, ClassDoc, FunctionDoc};
 use super::LanguageParser;
 
 pub struct JavaScriptParser;
@@ -22,10 +22,10 @@ impl LanguageParser for JavaScriptParser {
 
         let tree = parser.parse(&source_code, None)
             .ok_or(AppError::ParseError("Failed to parse JavaScript code".to_string()))?;
-
+        
         // TODO: handle arrow functions (const foo = () => {})
         // TODO: handle exported functions (export function, export default)
-        let query_string = r#"
+        let query_string = r"
             (
                 (comment) @func.docstring
                 .
@@ -49,16 +49,15 @@ impl LanguageParser for JavaScriptParser {
             (class_declaration
                 name: (identifier) @class.name
             )
-        "#;
+        ";
 
         let query = Query::new(&language, query_string)
-            .map_err(|e| AppError::ParseError(format!("Invalid query: {}", e)))?;
+            .map_err(|e| AppError::ParseError(format!("Invalid query: {e}")))?;
         let mut cursor = QueryCursor::new();
         let matches = cursor.matches(&query, tree.root_node(), source_bytes);
 
         let mut functions = Vec::new();
         let mut classes = Vec::new();
-
         let mut seen_functions = std::collections::HashSet::new();
         let mut seen_classes = std::collections::HashSet::new();
 
@@ -102,10 +101,8 @@ impl LanguageParser for JavaScriptParser {
                     if seen_classes.insert(name.clone()) {
                         classes.push(ClassDoc { name, docstring });
                     }
-                } else {
-                    if seen_functions.insert(name.clone()) {
-                        functions.push(FunctionDoc { name, docstring });
-                    }
+                } else if seen_functions.insert(name.clone()) {
+                    functions.push(FunctionDoc { name, docstring });
                 }
             }
         }
