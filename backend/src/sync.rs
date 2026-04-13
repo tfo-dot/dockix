@@ -55,7 +55,19 @@ fn pull_repo(path: &Path) -> Result<(), String> {
     let mut remote = repo.find_remote("origin")
         .map_err(|e| e.to_string())?;
 
-    remote.fetch(&["refs/heads/*:refs/remotes/origin/*"], None, None)
+    let token = crate::repo::load_token(path);
+
+    let mut fetch_opts = git2::FetchOptions::new();
+    let mut callbacks = git2::RemoteCallbacks::new();
+
+    if let Some(token) = token {
+        callbacks.credentials(move |_url, _username, _allowed| {
+            git2::Cred::userpass_plaintext("x-access-token", &token)
+        });
+    }
+
+    fetch_opts.remote_callbacks(callbacks);
+    remote.fetch(&["refs/heads/*:refs/remotes/origin/*"], Some(&mut fetch_opts), None)
         .map_err(|e| e.to_string())?;
 
     let fetch_head = repo.find_reference("FETCH_HEAD")

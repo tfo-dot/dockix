@@ -21,16 +21,26 @@ pub async fn clone_handler(
     State(config): State<Arc<AppConfig>>,
     Json(payload): Json<CloneRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    repo::validate_repo_url(&payload.url)?;
+
     let url = payload.url;
+    let token = payload.token;
     let target_path = config.base_dir.join(&payload.name);
 
     if target_path.exists() {
         return Err(AppError::AlreadyExists("Directory already exists".to_string()));
     }
 
+    let token_clone = token.clone();
+    let target_clone = target_path.clone();
+
     tokio::task::spawn_blocking(move || {
-        repo::clone_repo(&url, target_path)
+        repo::clone_repo(&url, target_clone, token_clone.as_deref())
     }).await??;
+
+    if let Some(ref token) = token {
+        repo::save_token(&target_path, token)?;
+    }
 
     Ok(Json("Repository cloned successfully"))
 }
