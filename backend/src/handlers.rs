@@ -27,33 +27,40 @@ pub async fn clone_handler(
 
     let name = payload.name.clone();
     let target_path = config.base_dir.join(&name);
-
-    // allow retrying a failed clone by cleaning up the old attempt
-    if repo::clone_error(&config.base_dir, &name).is_some() {
-        repo::clear_clone_error(&config.base_dir, &name);
-        let _ = fs::remove_dir_all(&target_path);
+    
+    if let Some(meta) = repo::load_meta(&config.base_dir, &name) {
+        if matches!(meta.status, crate::models::RepoStatus::Failed { .. }) {
+            let _ = fs::remove_dir_all(&target_path);
+        } else {
+            return Err(AppError::AlreadyExists);
+        }
     } else if target_path.exists() {
-        return Err(AppError::AlreadyExists("Directory already exists".to_string()));
+        return Err(AppError::AlreadyExists);
     }
-
-    repo::mark_cloning(&config.base_dir, &name);
 
     let url = payload.url;
     let token = payload.token;
     let depth = payload.depth.unwrap_or(1);
     let base_dir = config.base_dir.clone();
 
+    repo::save_meta(&config.base_dir, &name, &crate::models::RepoMeta {
+        token: token.clone(),
+        status: crate::models::RepoStatus::Cloning,
+    })?;
+
     tokio::task::spawn_blocking(move || {
-        match repo::clone_repo(&url, &target_path, token.as_deref(), depth) {
+        match repo::clone_repo(&url, &target_path, token.clone(), depth) {
             Ok(()) => {
-                repo::unmark_cloning(&base_dir, &name);
-                if let Some(ref token) = token {
-                    let _ = repo::save_token(&target_path, token);
-                }
+                let _ = repo::save_meta(&base_dir, &name, &crate::models::RepoMeta {
+                    token,
+                    status: crate::models::RepoStatus::Ready,
+                });
             }
             Err(e) => {
-                repo::unmark_cloning(&base_dir, &name);
-                repo::write_clone_error(&base_dir, &name, &e.to_string());
+                let _ = repo::save_meta(&base_dir, &name, &crate::models::RepoMeta {
+                    token,
+                    status: crate::models::RepoStatus::Failed { error: e.to_string() },
+                });
             }
         }
     });
@@ -68,7 +75,7 @@ pub async fn analyze_repo_handler(
     let repo_path = config.base_dir.join(&repo_name);
 
     if !repo_path.exists() {
-        return Err(AppError::NotFound("Repository not found".to_string()));
+        return Err(AppError::NotFound);
     }
 
     let parsed_data = tokio::task::spawn_blocking(move || {

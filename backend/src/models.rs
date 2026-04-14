@@ -1,13 +1,28 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum RepoStatus {
+    Ready,
+    Cloning,
+    Failed { error: String },
+}
+
 #[derive(Serialize, Deserialize)]
+pub struct RepoMeta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    #[serde(flatten)]
+    pub status: RepoStatus,
+}
+
+#[derive(Serialize)]
 pub struct RepoInfo {
     pub name: String,
     pub path: String,
-    pub status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    #[serde(flatten)]
+    pub status: RepoStatus,
 }
 
 #[derive(Deserialize)]

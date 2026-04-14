@@ -41,27 +41,32 @@ fn sync_all_repos(base_dir: &Path) {
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
 
-        if crate::repo::is_cloning(base_dir, name)
-            || crate::repo::clone_error(base_dir, name).is_some()
+        if let Some(meta) = crate::repo::load_meta(base_dir, name)
+            && !matches!(meta.status, crate::models::RepoStatus::Ready)
         {
             continue;
         }
 
-        match pull_repo(&path) {
+        match pull_repo(base_dir, &path) {
             Ok(()) => println!("  Synced: {name}"),
             Err(e) => eprintln!("  Failed to sync {name}: {e}"),
         }
     }
 }
 
-fn pull_repo(path: &Path) -> Result<(), String> {
+fn pull_repo(base_dir: &Path, path: &Path) -> Result<(), String> {
     let repo = git2::Repository::open(path)
         .map_err(|e| e.to_string())?;
 
     let mut remote = repo.find_remote("origin")
         .map_err(|e| e.to_string())?;
 
-    let token = crate::repo::load_token(path);
+    let name = path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+
+    let token = crate::repo::load_meta(base_dir, name)
+        .and_then(|meta| meta.token);
 
     let mut fetch_opts = git2::FetchOptions::new();
     let mut callbacks = git2::RemoteCallbacks::new();
