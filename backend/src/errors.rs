@@ -4,6 +4,7 @@ use axum::{
     Json,
 };
 use serde::Serialize;
+use std::fmt;
 
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -17,6 +18,19 @@ pub enum AppError {
     GitError(String),
     ParseError(String),
     InternalError(String),
+}
+
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AppError::NotFound(msg)
+            | AppError::AlreadyExists(msg)
+            | AppError::InvalidInput(msg)
+            | AppError::GitError(msg)
+            | AppError::ParseError(msg)
+            | AppError::InternalError(msg) => write!(f, "{msg}"),
+        }
+    }
 }
 
 impl IntoResponse for AppError {
@@ -36,14 +50,22 @@ impl IntoResponse for AppError {
 
 impl From<git2::Error> for AppError {
     fn from(err: git2::Error) -> Self {
+        let msg = err.message();
+
         let is_auth_error = err.code() == git2::ErrorCode::Auth
-            || (err.class() == git2::ErrorClass::Http
-            && err.message().contains("401"));
+            || (err.class() == git2::ErrorClass::Http && msg.contains("401"))
+            || msg.contains("authentication replays");
 
         if is_auth_error {
             return AppError::InvalidInput(
                 "Authentication failed, the repository may be private. Try providing a token."
                     .to_string(),
+            );
+        }
+
+        if err.class() == git2::ErrorClass::Http && msg.contains("404") {
+            return AppError::InvalidInput(
+                "Repository not found, check the URL.".to_string(),
             );
         }
 

@@ -41,6 +41,12 @@ fn sync_all_repos(base_dir: &Path) {
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
 
+        if crate::repo::is_cloning(base_dir, name)
+            || crate::repo::clone_error(base_dir, name).is_some()
+        {
+            continue;
+        }
+
         match pull_repo(&path) {
             Ok(()) => println!("  Synced: {name}"),
             Err(e) => eprintln!("  Failed to sync {name}: {e}"),

@@ -1,8 +1,10 @@
 use axum::{
     extract::State,
+    http::StatusCode,
     Json,
     response::IntoResponse,
 };
+use std::fs;
 use std::sync::Arc;
 use axum::extract::Path;
 
@@ -23,26 +25,40 @@ pub async fn clone_handler(
 ) -> Result<impl IntoResponse, AppError> {
     repo::validate_repo_url(&payload.url)?;
 
-    let url = payload.url;
-    let token = payload.token;
-    let target_path = config.base_dir.join(&payload.name);
+    let name = payload.name.clone();
+    let target_path = config.base_dir.join(&name);
 
-    if target_path.exists() {
+    // allow retrying a failed clone by cleaning up the old attempt
+    if repo::clone_error(&config.base_dir, &name).is_some() {
+        repo::clear_clone_error(&config.base_dir, &name);
+        let _ = fs::remove_dir_all(&target_path);
+    } else if target_path.exists() {
         return Err(AppError::AlreadyExists("Directory already exists".to_string()));
     }
 
-    let token_clone = token.clone();
-    let target_clone = target_path.clone();
+    repo::mark_cloning(&config.base_dir, &name);
+
+    let url = payload.url;
+    let token = payload.token;
+    let depth = payload.depth.unwrap_or(1);
+    let base_dir = config.base_dir.clone();
 
     tokio::task::spawn_blocking(move || {
-        repo::clone_repo(&url, target_clone, token_clone.as_deref())
-    }).await??;
+        match repo::clone_repo(&url, &target_path, token.as_deref(), depth) {
+            Ok(()) => {
+                repo::unmark_cloning(&base_dir, &name);
+                if let Some(ref token) = token {
+                    let _ = repo::save_token(&target_path, token);
+                }
+            }
+            Err(e) => {
+                repo::unmark_cloning(&base_dir, &name);
+                repo::write_clone_error(&base_dir, &name, &e.to_string());
+            }
+        }
+    });
 
-    if let Some(ref token) = token {
-        repo::save_token(&target_path, token)?;
-    }
-
-    Ok(Json("Repository cloned successfully"))
+    Ok((StatusCode::ACCEPTED, Json("Clone started, check GET /repos for status")))
 }
 
 pub async fn analyze_repo_handler(

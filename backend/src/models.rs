@@ -5,6 +5,9 @@ use std::path::PathBuf;
 pub struct RepoInfo {
     pub name: String,
     pub path: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -12,6 +15,7 @@ pub struct CloneRequest {
     pub url: String,
     pub name: String,
     pub token: Option<String>,
+    pub depth: Option<i32>,
 }
 
 #[derive(Serialize)]

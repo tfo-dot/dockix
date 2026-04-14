@@ -26,6 +26,8 @@ async fn main() {
         fs::create_dir_all(&base_dir).expect("Failed to create base directory");
     }
 
+    repo::cleanup_stale_cloning(&base_dir);
+
     sync::start_sync_task(base_dir.clone());
 
     let config = Arc::new(AppConfig { base_dir });
