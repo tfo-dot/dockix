@@ -94,6 +94,7 @@ dependencies = [
  "tree-sitter",
  "tree-sitter-javascript",
  "tree-sitter-python",
+ "url",
  "walkdir",
 ]
 

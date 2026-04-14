@@ -11,6 +11,7 @@ pub struct RepoInfo {
 pub struct CloneRequest {
     pub url: String,
     pub name: String,
+    pub token: Option<String>,
 }
 
 #[derive(Serialize)]
