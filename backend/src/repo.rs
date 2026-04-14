@@ -10,16 +10,17 @@ use crate::parsers::get_parser_for_extension;
 const TOKEN_FILE: &str = ".dockix-token";
 
 pub fn validate_repo_url(url: &str) -> Result<(), AppError> {
-    if !url.starts_with("https://") && !url.starts_with("http://") {
+    let parsed = url::Url::parse(url).map_err(|_| {
+        AppError::InvalidInput("Invalid URL format".to_string())
+    })?;
+
+    if parsed.scheme() != "https" && parsed.scheme() != "http" {
         return Err(AppError::InvalidInput(
             "URL must use https:// or http://".to_string(),
         ));
     }
 
-    let after_scheme = url.split("://").nth(1).unwrap_or("");
-    let parts: Vec<&str> = after_scheme.splitn(2, '/').collect();
-
-    if parts.len() < 2 || parts[0].is_empty() || parts[1].is_empty() {
+    if parsed.host_str().is_none() || parsed.path().len() <= 1 {
         return Err(AppError::InvalidInput(
             "URL must include a host and path (e.g. https://github.com/user/repo)".to_string(),
         ));

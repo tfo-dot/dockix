@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 git2 = "0.20.4"
+url = "2"
 walkdir = "2.4"
 tree-sitter = "0.22"
 tree-sitter-python = "0.21"
