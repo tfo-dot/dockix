@@ -1,13 +1,28 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use git2::Repository;
 
 use crate::errors::AppError;
-use crate::models::{RepoInfo, ParsedRepo};
+use crate::models::{RepoInfo, RepoMeta, RepoStatus, ParsedRepo};
 use crate::parsers::get_parser_for_extension;
 
-const TOKEN_FILE: &str = ".dockix-token";
+const INFO_PREFIX: &str = ".dockix-";
+const INFO_SUFFIX: &str = ".json";
+
+fn info_path(base_dir: &Path, name: &str) -> PathBuf {
+    base_dir.join(format!("{INFO_PREFIX}{name}{INFO_SUFFIX}"))
+}
+
+pub fn load_meta(base_dir: &Path, name: &str) -> Option<RepoMeta> {
+    let data = fs::read_to_string(info_path(base_dir, name)).ok()?;
+    serde_json::from_str(&data).ok()
+}
+
+pub fn save_meta(base_dir: &Path, name: &str, meta: &RepoMeta) -> Result<(), AppError> {
+    let json = serde_json::to_string(meta).map_err(|e| AppError::InternalError(e.to_string()))?;
+    fs::write(info_path(base_dir, name), json)?;
+    Ok(())
+}
 
 pub fn validate_repo_url(url: &str) -> Result<(), AppError> {
     let parsed = url::Url::parse(url).map_err(|_| {
@@ -29,30 +44,89 @@ pub fn validate_repo_url(url: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-pub fn save_token(repo_path: &Path, token: &str) -> Result<(), AppError> {
-    fs::write(repo_path.join(TOKEN_FILE), token)?;
-    Ok(())
-}
+pub fn cleanup_stale_cloning(base_dir: &Path) {
+    let Ok(entries) = fs::read_dir(base_dir) else { return };
 
-pub fn load_token(repo_path: &Path) -> Option<String> {
-    fs::read_to_string(repo_path.join(TOKEN_FILE)).ok()
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let Some(name) = file_name.to_str() else { continue };
+
+        let Some(repo_name) = name
+            .strip_prefix(INFO_PREFIX)
+            .and_then(|n| n.strip_suffix(INFO_SUFFIX))
+        else {
+            continue;
+        };
+
+        if repo_name.is_empty() {
+            continue;
+        }
+
+        let Some(meta) = load_meta(base_dir, repo_name) else { continue };
+
+        if matches!(meta.status, RepoStatus::Cloning) {
+            let repo_dir = base_dir.join(repo_name);
+            if repo_dir.exists() {
+                let _ = fs::remove_dir_all(&repo_dir);
+            }
+
+            let _ = save_meta(base_dir, repo_name, &RepoMeta {
+                token: meta.token,
+                status: RepoStatus::Failed {
+                    error: "Clone interrupted by server shutdown".to_string(),
+                },
+            });
+            eprintln!("  Cleaned up interrupted clone: {repo_name}");
+        }
+    }
 }
 
 pub fn list_repos(base_dir: &PathBuf) -> Result<Vec<RepoInfo>, AppError> {
     let mut repos = Vec::new();
+    let mut seen = std::collections::HashSet::new();
 
     let entries = fs::read_dir(base_dir)?;
 
     for entry in entries.flatten() {
         let path = entry.path();
+        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
 
-        if path.is_dir()
-            && path.join(".git").exists()
-            && let Some(name) = path.file_name().and_then(|n| n.to_str())
+        if path.is_dir() {
+            let name = file_name;
+
+            if seen.contains(name) {
+                continue;
+            }
+
+            if let Some(meta) = load_meta(base_dir, name) {
+                seen.insert(name.to_string());
+                repos.push(RepoInfo {
+                    name: name.to_string(),
+                    path: path.to_string_lossy().to_string(),
+                    status: meta.status,
+                });
+            } else if path.join(".git").exists() {
+                seen.insert(name.to_string());
+                repos.push(RepoInfo {
+                    name: name.to_string(),
+                    path: path.to_string_lossy().to_string(),
+                    status: RepoStatus::Ready,
+                });
+            }
+        } else if let Some(repo_name) = file_name
+            .strip_prefix(INFO_PREFIX)
+            .and_then(|n| n.strip_suffix(INFO_SUFFIX))
+            && !repo_name.is_empty() && !seen.contains(repo_name)
+            && let Some(meta) = load_meta(base_dir, repo_name)
+            && !matches!(meta.status, RepoStatus::Ready)
         {
+            seen.insert(repo_name.to_string());
             repos.push(RepoInfo {
-                name: name.to_string(),
-                path: path.to_string_lossy().to_string(),
+                name: repo_name.to_string(),
+                path: base_dir.join(repo_name).to_string_lossy().to_string(),
+                status: meta.status,
             });
         }
     }
@@ -60,26 +134,23 @@ pub fn list_repos(base_dir: &PathBuf) -> Result<Vec<RepoInfo>, AppError> {
     Ok(repos)
 }
 
-pub fn clone_repo(url: &str, target_path: PathBuf, token: Option<&str>) -> Result<(), AppError> {
-    match token {
-        Some(token) => {
-            let token = token.to_string();
-            let mut callbacks = git2::RemoteCallbacks::new();
-            callbacks.credentials(move |_url, _username, _allowed| {
-                git2::Cred::userpass_plaintext("x-access-token", &token)
-            });
+pub fn clone_repo(url: &str, target_path: &Path, token: Option<String>, depth: i32) -> Result<(), AppError> {
+    let mut callbacks = git2::RemoteCallbacks::new();
 
-            let mut fetch_opts = git2::FetchOptions::new();
-            fetch_opts.remote_callbacks(callbacks);
-
-            let mut builder = git2::build::RepoBuilder::new();
-            builder.fetch_options(fetch_opts);
-            builder.clone(url, &target_path)?;
-        }
-        None => {
-            Repository::clone(url, target_path)?;
-        }
+    if let Some(token) = token {
+        callbacks.credentials(move |_url, _username, _allowed| {
+            git2::Cred::userpass_plaintext("x-access-token", &token)
+        });
     }
+
+    let mut fetch_opts = git2::FetchOptions::new();
+    fetch_opts.remote_callbacks(callbacks);
+    fetch_opts.depth(depth);
+
+    let mut builder = git2::build::RepoBuilder::new();
+    builder.fetch_options(fetch_opts);
+    builder.clone(url, target_path)?;
+
     Ok(())
 }
 #[allow(clippy::needless_pass_by_value)]

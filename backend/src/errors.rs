@@ -4,6 +4,7 @@ use axum::{
     Json,
 };
 use serde::Serialize;
+use std::fmt;
 
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -11,22 +12,35 @@ struct ErrorResponse {
 }
 
 pub enum AppError {
-    NotFound(String),
-    AlreadyExists(String),
+    NotFound,
+    AlreadyExists,
     InvalidInput(String),
     GitError(String),
     ParseError(String),
     InternalError(String),
 }
 
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AppError::NotFound => write!(f, "Not found"),
+            AppError::AlreadyExists => write!(f, "Already exists"),
+            AppError::InvalidInput(msg)
+            | AppError::GitError(msg)
+            | AppError::ParseError(msg)
+            | AppError::InternalError(msg) => write!(f, "{msg}"),
+        }
+    }
+}
+
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            AppError::AlreadyExists(msg) => (StatusCode::CONFLICT, msg),
-            AppError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg),
-            AppError::GitError(msg) | AppError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-            AppError::ParseError(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
+        let (status, message) = match &self {
+            AppError::NotFound => (StatusCode::NOT_FOUND, "Not found".to_string()),
+            AppError::AlreadyExists => (StatusCode::CONFLICT, "Already exists".to_string()),
+            AppError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            AppError::GitError(msg) | AppError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
+            AppError::ParseError(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
         };
 
         let body = ErrorResponse { error: message };
@@ -36,14 +50,22 @@ impl IntoResponse for AppError {
 
 impl From<git2::Error> for AppError {
     fn from(err: git2::Error) -> Self {
+        let msg = err.message();
+
         let is_auth_error = err.code() == git2::ErrorCode::Auth
-            || (err.class() == git2::ErrorClass::Http
-            && err.message().contains("401"));
+            || (err.class() == git2::ErrorClass::Http && msg.contains("401"))
+            || msg.contains("authentication replays");
 
         if is_auth_error {
             return AppError::InvalidInput(
                 "Authentication failed, the repository may be private. Try providing a token."
                     .to_string(),
+            );
+        }
+
+        if err.class() == git2::ErrorClass::Http && msg.contains("404") {
+            return AppError::InvalidInput(
+                "Repository not found, check the URL.".to_string(),
             );
         }
 

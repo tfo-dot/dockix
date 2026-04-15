@@ -1,8 +1,10 @@
 use axum::{
     extract::State,
+    http::StatusCode,
     Json,
     response::IntoResponse,
 };
+use std::fs;
 use std::sync::Arc;
 use axum::extract::Path;
 
@@ -23,26 +25,47 @@ pub async fn clone_handler(
 ) -> Result<impl IntoResponse, AppError> {
     repo::validate_repo_url(&payload.url)?;
 
+    let name = payload.name.clone();
+    let target_path = config.base_dir.join(&name);
+    
+    if let Some(meta) = repo::load_meta(&config.base_dir, &name) {
+        if matches!(meta.status, crate::models::RepoStatus::Failed { .. }) {
+            let _ = fs::remove_dir_all(&target_path);
+        } else {
+            return Err(AppError::AlreadyExists);
+        }
+    } else if target_path.exists() {
+        return Err(AppError::AlreadyExists);
+    }
+
     let url = payload.url;
     let token = payload.token;
-    let target_path = config.base_dir.join(&payload.name);
+    let depth = payload.depth.unwrap_or(1);
+    let base_dir = config.base_dir.clone();
 
-    if target_path.exists() {
-        return Err(AppError::AlreadyExists("Directory already exists".to_string()));
-    }
-
-    let token_clone = token.clone();
-    let target_clone = target_path.clone();
+    repo::save_meta(&config.base_dir, &name, &crate::models::RepoMeta {
+        token: token.clone(),
+        status: crate::models::RepoStatus::Cloning,
+    })?;
 
     tokio::task::spawn_blocking(move || {
-        repo::clone_repo(&url, target_clone, token_clone.as_deref())
-    }).await??;
+        match repo::clone_repo(&url, &target_path, token.clone(), depth) {
+            Ok(()) => {
+                let _ = repo::save_meta(&base_dir, &name, &crate::models::RepoMeta {
+                    token,
+                    status: crate::models::RepoStatus::Ready,
+                });
+            }
+            Err(e) => {
+                let _ = repo::save_meta(&base_dir, &name, &crate::models::RepoMeta {
+                    token,
+                    status: crate::models::RepoStatus::Failed { error: e.to_string() },
+                });
+            }
+        }
+    });
 
-    if let Some(ref token) = token {
-        repo::save_token(&target_path, token)?;
-    }
-
-    Ok(Json("Repository cloned successfully"))
+    Ok((StatusCode::ACCEPTED, Json("Clone started, check GET /repos for status")))
 }
 
 pub async fn analyze_repo_handler(
@@ -52,7 +75,7 @@ pub async fn analyze_repo_handler(
     let repo_path = config.base_dir.join(&repo_name);
 
     if !repo_path.exists() {
-        return Err(AppError::NotFound("Repository not found".to_string()));
+        return Err(AppError::NotFound);
     }
 
     let parsed_data = tokio::task::spawn_blocking(move || {
