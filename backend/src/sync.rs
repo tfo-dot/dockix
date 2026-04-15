@@ -41,15 +41,44 @@ fn sync_all_repos(base_dir: &Path) {
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
 
-        if let Some(meta) = crate::repo::load_meta(base_dir, name)
-            && !matches!(meta.status, crate::models::RepoStatus::Ready)
-        {
+        let Some(meta) = crate::repo::load_meta(base_dir, name) else { continue };
+
+        let (crate::models::RepoStatus::Ready { last_synced_at }
+        | crate::models::RepoStatus::SyncFailed { last_synced_at, .. }) = meta.status
+        else {
             continue;
-        }
+        };
+
+        let _ = crate::repo::save_meta(base_dir, name, &crate::models::RepoMeta {
+            token: meta.token,
+            status: crate::models::RepoStatus::Syncing { last_synced_at },
+        });
 
         match pull_repo(base_dir, &path) {
-            Ok(()) => println!("  Synced: {name}"),
-            Err(e) => eprintln!("  Failed to sync {name}: {e}"),
+            Ok(()) => {
+                if let Some(meta) = crate::repo::load_meta(base_dir, name) {
+                    let _ = crate::repo::save_meta(base_dir, name, &crate::models::RepoMeta {
+                        token: meta.token,
+                        status: crate::models::RepoStatus::Ready {
+                            last_synced_at: chrono::Utc::now(),
+                        },
+                    });
+                }
+                println!("  Synced: {name}");
+            }
+            Err(e) => {
+                if let Some(meta) = crate::repo::load_meta(base_dir, name) {
+                    let _ = crate::repo::save_meta(base_dir, name, &crate::models::RepoMeta {
+                        token: meta.token,
+                        status: crate::models::RepoStatus::SyncFailed {
+                            last_synced_at,
+                            error: e.clone(),
+                            failed_at: chrono::Utc::now(),
+                        },
+                    });
+                }
+                eprintln!("  Failed to sync {name}: {e}");
+            }
         }
     }
 }
