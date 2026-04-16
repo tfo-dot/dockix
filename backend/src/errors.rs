@@ -15,6 +15,7 @@ pub enum AppError {
     NotFound,
     AlreadyExists,
     TooManyClones,
+    CloneInProgress,
     InvalidInput(String),
     GitError(String),
     ParseError(String),
@@ -27,6 +28,7 @@ impl fmt::Display for AppError {
             AppError::NotFound => write!(f, "Not found"),
             AppError::AlreadyExists => write!(f, "Already exists"),
             AppError::TooManyClones => write!(f, "Too many clones in progress"),
+            AppError::CloneInProgress => write!(f, "Clone is in progress"),
             AppError::InvalidInput(msg)
             | AppError::GitError(msg)
             | AppError::ParseError(msg)
@@ -41,6 +43,7 @@ impl IntoResponse for AppError {
             AppError::NotFound => (StatusCode::NOT_FOUND, "Not found".to_string()),
             AppError::AlreadyExists => (StatusCode::CONFLICT, "Already exists".to_string()),
             AppError::TooManyClones => (StatusCode::TOO_MANY_REQUESTS, "Too many clones in progress, try again later".to_string()),
+            AppError::CloneInProgress => (StatusCode::CONFLICT, "Cannot delete while clone is in progress".to_string()),
             AppError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::GitError(msg) | AppError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
             AppError::ParseError(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),

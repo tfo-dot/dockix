@@ -24,6 +24,14 @@ pub fn save_meta(base_dir: &Path, name: &str, meta: &RepoMeta) -> Result<(), App
     Ok(())
 }
 
+pub fn delete_meta(base_dir: &Path, name: &str) -> Result<(), AppError> {
+    let path = info_path(base_dir, name);
+    if path.exists() {
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
 pub fn validate_repo_url(url: &str) -> Result<(), AppError> {
     let parsed = url::Url::parse(url).map_err(|_| {
         AppError::InvalidInput("Invalid URL format".to_string())
@@ -63,12 +71,12 @@ pub fn cleanup_stale_cloning(base_dir: &Path) {
         }
 
         let Some(meta) = load_meta(base_dir, repo_name) else { continue };
+        let dir_exists = base_dir.join(repo_name).exists();
 
         match meta.status {
             RepoStatus::Cloning => {
-                let repo_dir = base_dir.join(repo_name);
-                if repo_dir.exists() {
-                    let _ = fs::remove_dir_all(&repo_dir);
+                if dir_exists {
+                    let _ = fs::remove_dir_all(base_dir.join(repo_name));
                 }
 
                 let _ = save_meta(base_dir, repo_name, &RepoMeta {
@@ -85,6 +93,15 @@ pub fn cleanup_stale_cloning(base_dir: &Path) {
                     status: RepoStatus::Ready { last_synced_at },
                 });
                 eprintln!("  Restored interrupted sync: {repo_name}");
+            }
+            RepoStatus::Ready { .. } | RepoStatus::SyncFailed { .. } if !dir_exists => {
+                let _ = save_meta(base_dir, repo_name, &RepoMeta {
+                    token: meta.token,
+                    status: RepoStatus::CloneFailed {
+                        error: "Repository directory is missing".to_string(),
+                    },
+                });
+                eprintln!("  Marked orphaned meta as failed: {repo_name}");
             }
             _ => {}
         }
@@ -125,10 +142,21 @@ pub fn list_repos(base_dir: &PathBuf) -> Result<Vec<RepoInfo>, AppError> {
             && let Some(meta) = load_meta(base_dir, repo_name)
         {
             seen.insert(repo_name.to_string());
+
+            let repo_dir = base_dir.join(repo_name);
+            let status = match meta.status {
+                RepoStatus::Ready { .. } | RepoStatus::SyncFailed { .. } if !repo_dir.exists() => {
+                    RepoStatus::CloneFailed {
+                        error: "Repository directory is missing".to_string(),
+                    }
+                }
+                other => other,
+            };
+
             repos.push(RepoInfo {
                 name: repo_name.to_string(),
-                path: base_dir.join(repo_name).to_string_lossy().to_string(),
-                status: meta.status,
+                path: repo_dir.to_string_lossy().to_string(),
+                status,
             });
         }
     }
