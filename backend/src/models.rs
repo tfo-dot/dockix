@@ -1,12 +1,19 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(tag = "status", rename_all = "lowercase")]
+#[serde(tag = "status", rename_all = "snake_case")]
 pub enum RepoStatus {
-    Ready,
+    Ready { last_synced_at: DateTime<Utc> },
     Cloning,
-    Failed { error: String },
+    Syncing { last_synced_at: DateTime<Utc> },
+    CloneFailed { error: String },
+    SyncFailed {
+        last_synced_at: DateTime<Utc>,
+        error: String,
+        failed_at: DateTime<Utc>,
+    },
 }
 
 #[derive(Serialize, Deserialize)]

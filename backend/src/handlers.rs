@@ -27,9 +27,9 @@ pub async fn clone_handler(
 
     let name = payload.name.clone();
     let target_path = config.base_dir.join(&name);
-    
+
     if let Some(meta) = repo::load_meta(&config.base_dir, &name) {
-        if matches!(meta.status, crate::models::RepoStatus::Failed { .. }) {
+        if matches!(meta.status, crate::models::RepoStatus::CloneFailed { .. }) {
             let _ = fs::remove_dir_all(&target_path);
         } else {
             return Err(AppError::AlreadyExists);
@@ -53,13 +53,17 @@ pub async fn clone_handler(
             Ok(()) => {
                 let _ = repo::save_meta(&base_dir, &name, &crate::models::RepoMeta {
                     token,
-                    status: crate::models::RepoStatus::Ready,
+                    status: crate::models::RepoStatus::Ready {
+                        last_synced_at: chrono::Utc::now(),
+                    },
                 });
             }
             Err(e) => {
                 let _ = repo::save_meta(&base_dir, &name, &crate::models::RepoMeta {
                     token,
-                    status: crate::models::RepoStatus::Failed { error: e.to_string() },
+                    status: crate::models::RepoStatus::CloneFailed {
+                        error: e.to_string(),
+                    },
                 });
             }
         }

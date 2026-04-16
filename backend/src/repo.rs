@@ -64,19 +64,29 @@ pub fn cleanup_stale_cloning(base_dir: &Path) {
 
         let Some(meta) = load_meta(base_dir, repo_name) else { continue };
 
-        if matches!(meta.status, RepoStatus::Cloning) {
-            let repo_dir = base_dir.join(repo_name);
-            if repo_dir.exists() {
-                let _ = fs::remove_dir_all(&repo_dir);
-            }
+        match meta.status {
+            RepoStatus::Cloning => {
+                let repo_dir = base_dir.join(repo_name);
+                if repo_dir.exists() {
+                    let _ = fs::remove_dir_all(&repo_dir);
+                }
 
-            let _ = save_meta(base_dir, repo_name, &RepoMeta {
-                token: meta.token,
-                status: RepoStatus::Failed {
-                    error: "Clone interrupted by server shutdown".to_string(),
-                },
-            });
-            eprintln!("  Cleaned up interrupted clone: {repo_name}");
+                let _ = save_meta(base_dir, repo_name, &RepoMeta {
+                    token: meta.token,
+                    status: RepoStatus::CloneFailed {
+                        error: "Clone interrupted by server shutdown".to_string(),
+                    },
+                });
+                eprintln!("  Cleaned up interrupted clone: {repo_name}");
+            }
+            RepoStatus::Syncing { last_synced_at } => {
+                let _ = save_meta(base_dir, repo_name, &RepoMeta {
+                    token: meta.token,
+                    status: RepoStatus::Ready { last_synced_at },
+                });
+                eprintln!("  Restored interrupted sync: {repo_name}");
+            }
+            _ => {}
         }
     }
 }
@@ -107,20 +117,12 @@ pub fn list_repos(base_dir: &PathBuf) -> Result<Vec<RepoInfo>, AppError> {
                     path: path.to_string_lossy().to_string(),
                     status: meta.status,
                 });
-            } else if path.join(".git").exists() {
-                seen.insert(name.to_string());
-                repos.push(RepoInfo {
-                    name: name.to_string(),
-                    path: path.to_string_lossy().to_string(),
-                    status: RepoStatus::Ready,
-                });
             }
         } else if let Some(repo_name) = file_name
             .strip_prefix(INFO_PREFIX)
             .and_then(|n| n.strip_suffix(INFO_SUFFIX))
             && !repo_name.is_empty() && !seen.contains(repo_name)
             && let Some(meta) = load_meta(base_dir, repo_name)
-            && !matches!(meta.status, RepoStatus::Ready)
         {
             seen.insert(repo_name.to_string());
             repos.push(RepoInfo {
