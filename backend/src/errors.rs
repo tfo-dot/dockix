@@ -14,6 +14,7 @@ struct ErrorResponse {
 pub enum AppError {
     NotFound,
     AlreadyExists,
+    TooManyClones,
     InvalidInput(String),
     GitError(String),
     ParseError(String),
@@ -25,6 +26,7 @@ impl fmt::Display for AppError {
         match self {
             AppError::NotFound => write!(f, "Not found"),
             AppError::AlreadyExists => write!(f, "Already exists"),
+            AppError::TooManyClones => write!(f, "Too many clones in progress"),
             AppError::InvalidInput(msg)
             | AppError::GitError(msg)
             | AppError::ParseError(msg)
@@ -38,6 +40,7 @@ impl IntoResponse for AppError {
         let (status, message) = match &self {
             AppError::NotFound => (StatusCode::NOT_FOUND, "Not found".to_string()),
             AppError::AlreadyExists => (StatusCode::CONFLICT, "Already exists".to_string()),
+            AppError::TooManyClones => (StatusCode::TOO_MANY_REQUESTS, "Too many clones in progress, try again later".to_string()),
             AppError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::GitError(msg) | AppError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
             AppError::ParseError(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
