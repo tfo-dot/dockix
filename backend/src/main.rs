@@ -14,6 +14,7 @@ use axum::{
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::Semaphore;
 
 use crate::models::AppConfig;
 use crate::handlers::{clone_handler, list_repos_handler, analyze_repo_handler};
@@ -30,7 +31,15 @@ async fn main() {
 
     sync::start_sync_task(base_dir.clone());
 
-    let config = Arc::new(AppConfig { base_dir });
+    let max_clones: usize = std::env::var("DOCKIX_MAX_CONCURRENT_CLONES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3);
+
+    let config = Arc::new(AppConfig {
+        base_dir,
+        clone_semaphore: Arc::new(Semaphore::new(max_clones)),
+    });
 
     let app = Router::new()
         .route("/clone", post(clone_handler))

@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(tag = "status", rename_all = "snake_case")]
@@ -71,4 +73,5 @@ pub struct FunctionDoc {
 
 pub struct AppConfig {
     pub base_dir: PathBuf,
+    pub clone_semaphore: Arc<Semaphore>,
 }

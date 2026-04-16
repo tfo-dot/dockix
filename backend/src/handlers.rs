@@ -38,6 +38,10 @@ pub async fn clone_handler(
         return Err(AppError::AlreadyExists);
     }
 
+    let permit = Arc::clone(&config.clone_semaphore)
+        .try_acquire_owned()
+        .map_err(|_| AppError::TooManyClones)?;
+
     let url = payload.url;
     let token = payload.token;
     let depth = payload.depth.unwrap_or(1);
@@ -49,6 +53,8 @@ pub async fn clone_handler(
     })?;
 
     tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+
         match repo::clone_repo(&url, &target_path, token.clone(), depth) {
             Ok(()) => {
                 let _ = repo::save_meta(&base_dir, &name, &crate::models::RepoMeta {
