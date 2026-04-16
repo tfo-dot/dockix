@@ -8,7 +8,7 @@ mod sync;
 
 use axum::{
     middleware,
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use std::fs;
@@ -17,7 +17,7 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 use crate::models::AppConfig;
-use crate::handlers::{clone_handler, list_repos_handler, analyze_repo_handler};
+use crate::handlers::{clone_handler, list_repos_handler, analyze_repo_handler, delete_repo_handler};
 
 #[tokio::main]
 async fn main() {
@@ -44,6 +44,7 @@ async fn main() {
     let app = Router::new()
         .route("/clone", post(clone_handler))
         .route("/repos", get(list_repos_handler))
+        .route("/repos/:repo_name", delete(delete_repo_handler))
         .route("/analyze/:repo_name", get(analyze_repo_handler))
         .layer(middleware::from_fn(auth::require_api_key))
         .with_state(config);

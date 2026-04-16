@@ -78,6 +78,37 @@ pub async fn clone_handler(
     Ok((StatusCode::ACCEPTED, Json("Clone started, check GET /repos for status")))
 }
 
+pub async fn delete_repo_handler(
+    State(config): State<Arc<AppConfig>>,
+    Path(repo_name): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let repo_path = config.base_dir.join(&repo_name);
+    let meta = repo::load_meta(&config.base_dir, &repo_name);
+
+    if let Some(ref meta) = meta
+        && matches!(meta.status, crate::models::RepoStatus::Cloning)
+    {
+        return Err(AppError::CloneInProgress);
+    }
+
+    let dir_exists = repo_path.exists();
+    let meta_exists = meta.is_some();
+
+    if !dir_exists && !meta_exists {
+        return Err(AppError::NotFound);
+    }
+
+    if dir_exists {
+        fs::remove_dir_all(&repo_path)?;
+    }
+
+    if meta_exists {
+        repo::delete_meta(&config.base_dir, &repo_name)?;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn analyze_repo_handler(
     State(config): State<Arc<AppConfig>>,
     Path(repo_name): Path<String>,
