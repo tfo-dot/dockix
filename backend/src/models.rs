@@ -52,23 +52,31 @@ pub struct ParsedRepo {
 #[derive(Serialize)]
 pub struct ParsedFile {
     pub file_path: String,
+    pub language: String,
     pub classes: Vec<ClassDoc>,
     pub functions: Vec<FunctionDoc>,
-    // TODO: add language field for frontend
 }
 
 #[derive(Serialize)]
 pub struct ClassDoc {
     pub name: String,
     pub docstring: Option<String>,
-    // TODO: add methods: Vec<FunctionDoc>
+    pub methods: Vec<FunctionDoc>,
 }
 
 #[derive(Serialize)]
 pub struct FunctionDoc {
     pub name: String,
     pub docstring: Option<String>,
-    // TODO: add parameters and return_type
+    pub parameters: Vec<ParameterDoc>,
+    pub return_type: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct ParameterDoc {
+    pub name: String,
+    pub type_annotation: Option<String>,
+    pub default_value: Option<String>,
 }
 
 pub struct AppConfig {
