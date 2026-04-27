@@ -1,100 +1,48 @@
 import React, { useState } from "react";
-import { Computer, Search, Eye } from "lucide-react";
+import LandingPage from "./pages/LandingPage";
+import Dashboard from "./pages/Dashboard";
+import UserInformation from "./pages/UserInformation";
+import Project from "./pages/Project";
+import Settings from "./pages/Settings";
 
-import Log from "./components/Log.tsx";
-import Sidebar from "./components/Sidebar.tsx";
-import ProjectCard, { type Project } from "./components/ProjectCard.tsx";
+export default function App() {
+  // Prosty system nawigacji oparty na stanie
+  const [currentPage, setCurrentPage] = useState<"landing" | "dashboard" | "user" | "project" | "settings">("landing");
 
-const MOCK_PROJECTS: Project[] = [
-  {
-    id: "1",
-    name: "kernel-module-xyz",
-    branch: "main",
-    status: "synced",
-    lastSync: "2m ago",
-  },
-  {
-    id: "2",
-    name: "tree-sitter-parser",
-    branch: "develop",
-    status: "indexing",
-    lastSync: "Now",
-  },
-  {
-    id: "3",
-    name: "legacy-api-docs",
-    branch: "v1.0",
-    status: "error",
-    lastSync: "1h ago",
-  },
-];
-
-export default function Dashboard() {
-  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  // Funkcja renderująca odpowiednią stronę
+  const renderPage = () => {
+    switch (currentPage) {
+      case "landing":
+        return <LandingPage onStart={() => setCurrentPage("dashboard")} />;
+      case "dashboard":
+        return <Dashboard />;
+      case "user":
+        return <UserInformation />;
+      case "project":
+        return <Project />;
+      case "settings":
+        return <Settings />;
+      default:
+        return <LandingPage onStart={() => setCurrentPage("dashboard")} />;
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-[#0f1115] text-slate-300 font-sans selection:bg-blue-500/30">
-      {/* 1. IMPERSONATION BAR (Audit/Preview) */}
-      {isPreviewMode && (
-        <div className="bg-amber-500 text-black px-4 py-1.5 text-center text-sm font-bold flex justify-center items-center gap-4">
-          <Eye size={16} /> VIEWING AS GUEST (READ-ONLY)
-          <button
-            onClick={() => setIsPreviewMode(false)}
-            className="bg-black/20 hover:bg-black/30 px-2 py-0.5 rounded text-xs transition"
+    <>
+      {renderPage()}
+      
+      {/* TYMCZASOWY PANEL DO TESTÓW (Usuń po dodaniu linków w Sidebarze) */}
+      <div className="fixed bottom-4 right-4 flex gap-2 bg-black/80 p-2 rounded-full border border-white/10 z-50">
+        {(["landing", "dashboard", "user", "project", "settings"] as const).map(p => (
+          <button 
+            key={p} 
+            onClick={() => setCurrentPage(p)}
+            className={`px-3 py-1 text-[10px] uppercase font-bold rounded-full ${currentPage === p ? 'bg-green-500 text-black' : 'text-white'}`}
           >
-            Exit Preview
+            {p}
           </button>
-        </div>
-      )}
-
-      <div className="flex">
-        <Sidebar />
-
-        <main className="flex-1 p-8">
-          {/* Header Area */}
-          <header className="flex justify-between items-center mb-10">
-            <div>
-              <h1 className="text-2xl font-bold text-white">
-                Project Dashboard
-              </h1>
-              <p className="text-slate-500 text-sm">
-                Managing {MOCK_PROJECTS.length} indexed repositories.
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <div className="relative">
-                <Search
-                  className="absolute left-3 top-2.5 text-slate-500"
-                  size={16}
-                />
-                <input
-                  type="text"
-                  placeholder="Ctrl + K to search..."
-                  className="bg-slate-900 border border-slate-800 rounded-md pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-blue-500 transition w-64"
-                />
-              </div>
-              <button
-                onClick={() => setIsPreviewMode(true)}
-                className="flex items-center gap-2 px-4 py-2 border border-slate-700 rounded-md text-sm hover:bg-slate-800 transition"
-              >
-                <Eye size={16} /> Preview Mode
-              </button>
-              <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-sm font-medium transition">
-                <Computer size={16} /> Add Repository
-              </button>
-            </div>
-          </header>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {MOCK_PROJECTS.map((proj) => (
-              <ProjectCard project={proj} key={proj.id} />
-            ))}
-          </div>
-
-          <Log />
-        </main>
+        ))}
       </div>
-    </div>
+    </>
   );
 }
