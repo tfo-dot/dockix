@@ -22,7 +22,7 @@ impl LanguageParser for JavaScriptParser {
 
         let tree = parser.parse(&source_code, None)
             .ok_or(AppError::ParseError("Failed to parse JavaScript code".to_string()))?;
-        
+
         // TODO: handle arrow functions (const foo = () => {})
         // TODO: handle exported functions (export function, export default)
         let query_string = r"
@@ -77,7 +77,6 @@ impl LanguageParser for JavaScriptParser {
                         is_class = true;
                     }
                     "func.docstring" | "class.docstring" => {
-                        // strip JSDoc syntax: /**, */, leading * on each line
                         let cleaned = text
                             .trim_start_matches("/**")
                             .trim_start_matches("/*")
@@ -99,10 +98,15 @@ impl LanguageParser for JavaScriptParser {
             if !name.is_empty() {
                 if is_class {
                     if seen_classes.insert(name.clone()) {
-                        classes.push(ClassDoc { name, docstring });
+                        classes.push(ClassDoc { name, docstring, methods: Vec::new() });
                     }
                 } else if seen_functions.insert(name.clone()) {
-                    functions.push(FunctionDoc { name, docstring });
+                    functions.push(FunctionDoc {
+                        name,
+                        docstring,
+                        parameters: Vec::new(),
+                        return_type: None,
+                    });
                 }
             }
         }
@@ -114,6 +118,7 @@ impl LanguageParser for JavaScriptParser {
 
         Ok(ParsedFile {
             file_path: relative_path,
+            language: "javascript".to_string(),
             classes,
             functions,
         })
