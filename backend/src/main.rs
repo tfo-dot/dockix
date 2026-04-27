@@ -42,10 +42,10 @@ async fn main() {
     });
 
     let app = Router::new()
-        .route("/clone", post(clone_handler))
+        .route("/repos", post(clone_handler))
         .route("/repos", get(list_repos_handler))
         .route("/repos/:repo_name", delete(delete_repo_handler))
-        .route("/analyze/:repo_name", get(analyze_repo_handler))
+        .route("/repos/:repo_name/analysis", get(analyze_repo_handler))
         .layer(middleware::from_fn(auth::require_api_key))
         .with_state(config);
 
