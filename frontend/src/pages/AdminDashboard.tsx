@@ -1,15 +1,7 @@
 import React from "react";
 import Sidebar from "../components/Sidebar";
-import {
-  FolderGit2,
-  HardDrive,
-  CheckCircle,
-  Loader,
-  AlertTriangle,
-  Clock,
-  Activity,
-} from "lucide-react";
-import type { Page } from "../App";
+import { FolderGit2, HardDrive, CheckCircle, Loader, AlertTriangle, Clock, Activity } from "lucide-react";
+import type { Page, User as UserType } from "../App";
 
 const PROJECTS = [
   { name: "kernel-module-xyz", status: "synced", docs: 186, size: "24.3 MB" },
@@ -42,10 +34,12 @@ const statusConfig: Record<SyncStatus, { label: string; color: string; icon: Rea
 
 const totalDiskMB = PROJECTS.reduce((acc, p) => acc + parseFloat(p.size), 0);
 
-export default function AdminDashboard({ navigate }: { navigate: (p: Page) => void }) {
+export default function AdminDashboard({ navigate, user, onLogout }: {
+  navigate: (p: Page) => void; user?: UserType | null; onLogout?: () => void;
+}) {
   return (
     <div className="flex min-h-screen bg-[#0f1115]">
-      <Sidebar activePage="admin" navigate={navigate} />
+      <Sidebar activePage="admin" navigate={navigate} user={user} onLogout={onLogout} />
 
       <main className="flex-1 flex flex-col overflow-y-auto">
         <header className="h-16 border-b border-slate-800 flex items-center px-8 bg-[#0f1115]/80 backdrop-blur-md sticky top-0 z-10">
@@ -53,36 +47,18 @@ export default function AdminDashboard({ navigate }: { navigate: (p: Page) => vo
         </header>
 
         <div className="p-8 max-w-5xl w-full space-y-8">
-
-          {/* Stats */}
           <div className="grid grid-cols-2 gap-4">
-            <StatCard
-              icon={<FolderGit2 size={20} />}
-              label="Projects Indexed"
-              value={`${PROJECTS.length}`}
-              sub="across all workspaces"
-              color="text-blue-400"
-            />
-            <StatCard
-              icon={<HardDrive size={20} />}
-              label="Total Disk Usage"
-              value={`${totalDiskMB.toFixed(1)} MB`}
-              sub="combined index storage"
-              color="text-purple-400"
-            />
+            <StatCard icon={<FolderGit2 size={20} />} label="Projects Indexed" value={`${PROJECTS.length}`} sub="across all workspaces" color="text-blue-400" />
+            <StatCard icon={<HardDrive size={20} />} label="Total Disk Usage" value={`${totalDiskMB.toFixed(1)} MB`} sub="combined index storage" color="text-purple-400" />
           </div>
 
-          {/* Project statuses */}
           <section className="space-y-4">
             <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">Project Statuses</h3>
             <div className="bg-[#161b22] border border-slate-800 rounded-xl overflow-hidden">
               {PROJECTS.map((p, i) => {
                 const s = statusConfig[p.status as SyncStatus];
                 return (
-                  <div
-                    key={p.name}
-                    className={`flex items-center justify-between px-5 py-4 ${i < PROJECTS.length - 1 ? "border-b border-slate-800" : ""}`}
-                  >
+                  <div key={p.name} className={`flex items-center justify-between px-5 py-4 ${i < PROJECTS.length - 1 ? "border-b border-slate-800" : ""}`}>
                     <div className="flex items-center gap-4">
                       <div className="w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center text-slate-500">
                         <FolderGit2 size={14} />
@@ -101,25 +77,20 @@ export default function AdminDashboard({ navigate }: { navigate: (p: Page) => vo
             </div>
           </section>
 
-          {/* Logs */}
           <section className="space-y-4">
             <div className="flex items-center gap-2">
-              <Activity size={14} className="text-slate-500" />
+              <Activity size={13} className="text-slate-500" />
               <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">Recent Activity (last 10)</h3>
             </div>
             <div className="bg-[#161b22] border border-slate-800 rounded-xl overflow-hidden">
               {LOGS.map((log, i) => (
-                <div
-                  key={i}
-                  className={`flex items-start gap-4 px-5 py-3.5 ${i < LOGS.length - 1 ? "border-b border-slate-800/60" : ""}`}
-                >
+                <div key={i} className={`flex items-start gap-4 px-5 py-3.5 ${i < LOGS.length - 1 ? "border-b border-slate-800/60" : ""}`}>
                   <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-white font-bold text-[9px] shrink-0 mt-0.5">
-                    {log.user === "Bot" ? "🤖" : log.user[0]}
+                    {log.user === "Bot" ? "⚙" : log.user[0]}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-slate-300">
-                      <span className="font-medium text-white">{log.user}</span>{" "}
-                      {log.action}{" "}
+                      <span className="font-medium text-white">{log.user}</span>{" "}{log.action}{" "}
                       <span className="font-mono text-blue-400 text-[11px]">{log.project}</span>
                     </p>
                     <p className="text-[10px] text-slate-600 mt-0.5">{log.time}</p>
@@ -128,31 +99,16 @@ export default function AdminDashboard({ navigate }: { navigate: (p: Page) => vo
               ))}
             </div>
           </section>
-
         </div>
       </main>
     </div>
   );
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-  sub,
-  color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  sub: string;
-  color: string;
-}) {
+function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; label: string; value: string; sub: string; color: string }) {
   return (
     <div className="bg-[#161b22] border border-slate-800 rounded-2xl p-6 flex items-center gap-5">
-      <div className={`w-12 h-12 rounded-xl bg-slate-800 flex items-center justify-center ${color}`}>
-        {icon}
-      </div>
+      <div className={`w-12 h-12 rounded-xl bg-slate-800 flex items-center justify-center ${color}`}>{icon}</div>
       <div>
         <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mb-1">{label}</p>
         <p className="text-2xl font-bold text-white">{value}</p>

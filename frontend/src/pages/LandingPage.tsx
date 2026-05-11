@@ -1,13 +1,7 @@
 import React from "react";
-import {
-  Terminal,
-  Activity,
-  Layers,
-  Table as TableIcon,
-  ArrowRight,
-} from "lucide-react";
+import { Terminal, Activity, Layers, Table as TableIcon, ArrowRight, Eye } from "lucide-react";
 
-export default function LandingPage({ onStart }: { onStart: () => void }) {
+export default function LandingPage({ onStart, onGuest }: { onStart: () => void; onGuest: () => void }) {
   return (
     <div className="min-h-screen bg-[#0f1115] text-slate-300 font-sans selection:bg-green-500/30">
       <nav className="p-8">
@@ -15,7 +9,7 @@ export default function LandingPage({ onStart }: { onStart: () => void }) {
       </nav>
 
       <main className="max-w-7xl mx-auto px-6 py-4 grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-        {/* Left: Analysis Engine */}
+        {/* Left: Analysis Engine mockup */}
         <div className="relative">
           <div className="absolute -inset-1 bg-gradient-to-r from-green-500/20 to-blue-500/20 blur opacity-25" />
           <div className="relative bg-[#161b22] border border-slate-800 rounded-lg overflow-hidden shadow-2xl">
@@ -25,9 +19,7 @@ export default function LandingPage({ onStart }: { onStart: () => void }) {
                 <div className="w-3 h-3 rounded-full bg-amber-500/20" />
                 <div className="w-3 h-3 rounded-full bg-green-500/20" />
               </div>
-              <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
-                Analysis Engine
-              </span>
+              <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Analysis Engine</span>
             </div>
             <div className="p-6 font-mono text-sm leading-relaxed">
               <CodeLine n={6} content={<><span className="text-blue-400">def</span> <span className="text-yellow-200">parse_code</span>(d):</>} />
@@ -56,9 +48,7 @@ export default function LandingPage({ onStart }: { onStart: () => void }) {
                 <span className="absolute text-xl font-bold text-white">78%</span>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white uppercase tracking-tight">
-                  Indexing Process
-                </h3>
+                <h3 className="text-lg font-bold text-white uppercase tracking-tight">Indexing Process</h3>
                 <p className="text-slate-500 text-sm">Automated documentation in progress...</p>
               </div>
             </div>
@@ -68,11 +58,13 @@ export default function LandingPage({ onStart }: { onStart: () => void }) {
                 onClick={onStart}
                 className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 px-6 rounded-xl transition flex items-center justify-center gap-2 group"
               >
-                GET STARTED NOW{" "}
-                <ArrowRight size={18} className="group-hover:translate-x-1 transition" />
+                GET STARTED <ArrowRight size={18} className="group-hover:translate-x-1 transition" />
               </button>
-              <button className="w-full border border-slate-700 hover:bg-slate-800 text-white font-medium py-3 px-6 rounded-xl transition">
-                Sign in
+              <button
+                onClick={onGuest}
+                className="w-full border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white font-medium py-3 px-6 rounded-xl transition flex items-center justify-center gap-2"
+              >
+                <Eye size={15} /> Browse docs as guest
               </button>
             </div>
           </div>

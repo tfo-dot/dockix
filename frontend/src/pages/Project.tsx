@@ -1,19 +1,14 @@
 import React from "react";
 import Sidebar from "../components/Sidebar";
-import {
-  GitBranch,
-  GitCommit,
-  RefreshCw,
-  Database,
-  FileText,
-  ChevronRight,
-} from "lucide-react";
-import type { Page } from "../App";
+import { GitBranch, GitCommit, RefreshCw, Database, FileText, ChevronRight } from "lucide-react";
+import type { Page, User as UserType } from "../App";
 
-export default function Project({ navigate }: { navigate: (p: Page) => void }) {
+export default function Project({ navigate, user, onLogout }: {
+  navigate: (p: Page) => void; user?: UserType | null; onLogout?: () => void;
+}) {
   return (
     <div className="flex min-h-screen bg-[#0f1115]">
-      <Sidebar activePage="project" navigate={navigate} />
+      <Sidebar activePage="project" navigate={navigate} user={user} onLogout={onLogout} />
 
       <main className="flex-1 flex flex-col">
         <header className="h-16 border-b border-slate-800 flex items-center justify-between px-8 bg-[#0f1115]/80 backdrop-blur-md">
@@ -23,7 +18,7 @@ export default function Project({ navigate }: { navigate: (p: Page) => void }) {
             <span className="text-sm font-mono text-green-500">kernel-module-xyz</span>
           </div>
           <button className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition">
-            <RefreshCw size={13} /> Resync Repository
+            <RefreshCw size={13} /> Resync
           </button>
         </header>
 
@@ -31,14 +26,8 @@ export default function Project({ navigate }: { navigate: (p: Page) => void }) {
           <div className="lg:col-span-2 space-y-6">
             <section className="bg-[#161b22] border border-slate-800 rounded-2xl overflow-hidden">
               <div className="p-4 border-b border-slate-800 bg-[#0d1117] flex justify-between items-center">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                  File Structure
-                </span>
-                <div className="flex gap-2">
-                  <span className="text-[10px] text-green-500 bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">
-                    main
-                  </span>
-                </div>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">File Structure</span>
+                <span className="text-[10px] text-green-500 bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">main</span>
               </div>
               <div className="p-4 space-y-1">
                 <FileRow name="src/main.rs" type="file" status="Analyzed" />
@@ -52,9 +41,7 @@ export default function Project({ navigate }: { navigate: (p: Page) => void }) {
 
           <div className="space-y-6">
             <section className="bg-slate-900/30 border border-slate-800 rounded-2xl p-6">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-6">
-                Project Stats
-              </h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-6">Project Stats</h3>
               <div className="space-y-4">
                 <StatBox icon={<GitBranch size={15} />} label="Branches" value="4 Active" />
                 <StatBox icon={<GitCommit size={15} />} label="Total Commits" value="1,284" />
@@ -70,10 +57,8 @@ export default function Project({ navigate }: { navigate: (p: Page) => void }) {
                   <div className="h-full bg-green-500 w-[78%]" />
                 </div>
               </div>
-              <button
-                onClick={() => navigate("documentation")}
-                className="mt-4 w-full py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold text-white transition flex items-center justify-center gap-2"
-              >
+              <button onClick={() => navigate("documentation")}
+                className="mt-4 w-full py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold text-white transition flex items-center justify-center gap-2">
                 View Documentation <ChevronRight size={13} />
               </button>
             </section>
@@ -84,61 +69,27 @@ export default function Project({ navigate }: { navigate: (p: Page) => void }) {
   );
 }
 
-function FileRow({
-  name,
-  type,
-  status,
-  active = false,
-}: {
-  name: string;
-  type: "file" | "folder";
-  status: string;
-  active?: boolean;
-}) {
+function FileRow({ name, type, status, active = false }: { name: string; type: "file" | "folder"; status: string; active?: boolean }) {
   return (
-    <div
-      className={`flex items-center justify-between p-2.5 rounded-lg transition-colors group cursor-pointer ${
-        active
-          ? "bg-green-500/5 border border-green-500/20"
-          : "hover:bg-slate-800/50"
-      }`}
-    >
+    <div className={`flex items-center justify-between p-2.5 rounded-lg transition-colors group cursor-pointer ${active ? "bg-green-500/5 border border-green-500/20" : "hover:bg-slate-800/50"}`}>
       <div className="flex items-center gap-3">
         <div className={active ? "text-green-500" : "text-slate-500"}>
-          {type === "folder" ? (
-            <div className="w-4 h-4 bg-blue-500/20 rounded" />
-          ) : (
-            <div className="w-4 h-4 bg-slate-700 rounded" />
-          )}
+          {type === "folder" ? <div className="w-4 h-4 bg-blue-500/20 rounded" /> : <div className="w-4 h-4 bg-slate-700 rounded" />}
         </div>
-        <span className={`text-sm ${active ? "text-white font-medium" : "text-slate-300"}`}>
-          {name}
-        </span>
+        <span className={`text-sm ${active ? "text-white font-medium" : "text-slate-300"}`}>{name}</span>
       </div>
       <div className="flex items-center gap-4">
-        <span className={`text-[10px] font-mono ${active ? "text-green-400" : "text-slate-500"}`}>
-          {status}
-        </span>
+        <span className={`text-[10px] font-mono ${active ? "text-green-400" : "text-slate-500"}`}>{status}</span>
         <ChevronRight size={13} className="text-slate-700 group-hover:text-slate-400" />
       </div>
     </div>
   );
 }
 
-function StatBox({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
+function StatBox({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="flex items-center gap-4">
-      <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
-        {icon}
-      </div>
+      <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">{icon}</div>
       <div>
         <p className="text-[10px] uppercase font-bold text-slate-500 tracking-tight">{label}</p>
         <p className="text-sm font-medium text-white">{value}</p>

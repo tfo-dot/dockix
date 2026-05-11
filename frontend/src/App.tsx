@@ -1,32 +1,89 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
-import UserInformation from "./pages/UserInformation";
-import Project from "./pages/Project";
 import Settings from "./pages/Settings";
 import Onboarding from "./pages/Onboarding";
 import Indexing from "./pages/Indexing";
 import Documentation from "./pages/Documentation";
 import ProjectManagement from "./pages/ProjectManagement";
 import AdminDashboard from "./pages/AdminDashboard";
+import Project from "./pages/Project";
+import GuestDocumentation from "./pages/GuestDocumentation";
 
 export type Page =
   | "landing"
   | "onboarding"
   | "indexing"
   | "dashboard"
-  | "user"
   | "project"
   | "documentation"
   | "project-management"
   | "settings"
-  | "admin";
+  | "admin"
+  | "guest-docs";
+
+export type User = {
+  name: string;
+  email: string;
+  role: "admin" | "user";
+};
+
+const MOCK_USER: User = {
+  name: "User2137",
+  email: "user2137@dockix.ai",
+  role: "admin",
+};
+
+function pageFromHash(hash: string): Page | null {
+  if (hash.startsWith("#/docs/")) return "documentation";
+  if (hash.startsWith("#/guest/")) return "guest-docs";
+  return null;
+}
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>("landing");
   const [hasProjects, setHasProjects] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [docPath, setDocPath] = useState<string>("");
 
-  const navigate = (page: Page) => setCurrentPage(page);
+  // Hash-based routing
+  useEffect(() => {
+    const onHashChange = () => {
+      const hash = window.location.hash;
+      const page = pageFromHash(hash);
+      if (page) setCurrentPage(page);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    onHashChange();
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const navigate = (page: Page, path?: string) => {
+    if (page === "documentation" && path) {
+      window.location.hash = `/docs/${path}`;
+      setDocPath(path);
+    } else if (page === "guest-docs") {
+      window.location.hash = `/guest/${path ?? ""}`;
+    } else {
+      window.location.hash = "";
+    }
+    setCurrentPage(page);
+  };
+
+  const handleLogin = () => {
+    setIsLoggedIn(true);
+    setUser(MOCK_USER);
+    setHasProjects(true);
+    navigate("dashboard");
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setUser(null);
+    setHasProjects(false);
+    navigate("landing");
+  };
 
   const renderPage = () => {
     switch (currentPage) {
@@ -34,19 +91,14 @@ export default function App() {
         return (
           <LandingPage
             onStart={() => {
-              if (hasProjects) navigate("dashboard");
-              else navigate("onboarding");
+              // Simulate login → if has projects go to dashboard, else onboarding
+              handleLogin();
             }}
+            onGuest={() => navigate("guest-docs")}
           />
         );
       case "onboarding":
-        return (
-          <Onboarding
-            onComplete={() => {
-              navigate("indexing");
-            }}
-          />
-        );
+        return <Onboarding onComplete={() => navigate("indexing")} />;
       case "indexing":
         return (
           <Indexing
@@ -59,56 +111,31 @@ export default function App() {
           />
         );
       case "dashboard":
-        return <Dashboard navigate={navigate} />;
-      case "user":
-        return <UserInformation navigate={navigate} />;
+        return <Dashboard navigate={navigate} user={user} onLogout={handleLogout} />;
       case "project":
-        return <Project navigate={navigate} />;
+        return <Project navigate={navigate} user={user} onLogout={handleLogout} />;
       case "documentation":
-        return <Documentation navigate={navigate} />;
+        return <Documentation navigate={navigate} user={user} onLogout={handleLogout} docPath={docPath} setDocPath={setDocPath} />;
       case "project-management":
-        return <ProjectManagement navigate={navigate} isNewProject={!hasProjects} onComplete={() => navigate("documentation")} />;
+        return (
+          <ProjectManagement
+            navigate={navigate}
+            user={user}
+            onLogout={handleLogout}
+            isNewProject={!hasProjects}
+            onComplete={() => navigate("documentation")}
+          />
+        );
       case "settings":
-        return <Settings navigate={navigate} />;
+        return <Settings navigate={navigate} user={user} onLogout={handleLogout} />;
       case "admin":
-        return <AdminDashboard navigate={navigate} />;
+        return <AdminDashboard navigate={navigate} user={user} onLogout={handleLogout} />;
+      case "guest-docs":
+        return <GuestDocumentation navigate={navigate} />;
       default:
-        return <LandingPage onStart={() => navigate("onboarding")} />;
+        return <LandingPage onStart={handleLogin} onGuest={() => navigate("guest-docs")} />;
     }
   };
 
-  return (
-    <>
-      {renderPage()}
-      {/* DEV NAV — remove in production */}
-      <div className="fixed bottom-4 right-4 flex flex-wrap gap-1.5 bg-black/80 p-2 rounded-2xl border border-white/10 z-50 max-w-sm">
-        {(
-          [
-            "landing",
-            "onboarding",
-            "indexing",
-            "dashboard",
-            "documentation",
-            "project-management",
-            "user",
-            "project",
-            "settings",
-            "admin",
-          ] as Page[]
-        ).map((p) => (
-          <button
-            key={p}
-            onClick={() => setCurrentPage(p)}
-            className={`px-2 py-0.5 text-[9px] uppercase font-bold rounded-full transition ${
-              currentPage === p
-                ? "bg-green-500 text-black"
-                : "text-white/60 hover:text-white"
-            }`}
-          >
-            {p}
-          </button>
-        ))}
-      </div>
-    </>
-  );
+  return <>{renderPage()}</>;
 }
