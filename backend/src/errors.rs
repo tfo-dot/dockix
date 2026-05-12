@@ -11,7 +11,10 @@ struct ErrorResponse {
     error: String,
 }
 
+#[derive(Debug)]
 pub enum AppError {
+    Unauthorized,
+    Forbidden,
     NotFound,
     AlreadyExists,
     TooManyClones,
@@ -25,6 +28,8 @@ pub enum AppError {
 impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AppError::Unauthorized => write!(f, "Unauthorized"),
+            AppError::Forbidden => write!(f, "Forbidden"),
             AppError::NotFound => write!(f, "Not found"),
             AppError::AlreadyExists => write!(f, "Already exists"),
             AppError::TooManyClones => write!(f, "Too many clones in progress"),
@@ -40,6 +45,8 @@ impl fmt::Display for AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
+            AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()),
+            AppError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".to_string()),
             AppError::NotFound => (StatusCode::NOT_FOUND, "Not found".to_string()),
             AppError::AlreadyExists => (StatusCode::CONFLICT, "Already exists".to_string()),
             AppError::TooManyClones => (StatusCode::TOO_MANY_REQUESTS, "Too many clones in progress, try again later".to_string()),
@@ -90,3 +97,10 @@ impl From<tokio::task::JoinError> for AppError {
         AppError::InternalError("Thread error".to_string())
     }
 }
+
+impl From<rusqlite::Error> for AppError {
+    fn from(err: rusqlite::Error) -> Self {
+        AppError::InternalError(format!("Database error: {err}"))
+    }
+}
+

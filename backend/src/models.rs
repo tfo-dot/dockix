@@ -82,4 +82,52 @@ pub struct ParameterDoc {
 pub struct AppConfig {
     pub base_dir: PathBuf,
     pub clone_semaphore: Arc<Semaphore>,
+    pub db: crate::db::Db,
+}
+#[derive(Serialize)]
+pub struct User {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub created_at: String,
+}
+
+#[derive(Deserialize)]
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Serialize)]
+pub struct LoginResponse {
+    pub token: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreateUserRequest {
+    pub name: String,
+    pub email: String,
+    pub password: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct CreateUserResponse {
+    #[serde(flatten)]
+    pub user: User,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated_password: Option<String>,
+}
+
+
+#[derive(Deserialize)]
+pub struct UpdateMeRequest {
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub password: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateUserRequest {
+    pub name: Option<String>,
+    pub email: Option<String>,
 }
