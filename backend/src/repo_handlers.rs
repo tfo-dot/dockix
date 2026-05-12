@@ -15,7 +15,8 @@ use crate::repo;
 pub async fn list_repos_handler(
     State(config): State<Arc<AppConfig>>,
 ) -> Result<impl IntoResponse, AppError> {
-    let repos = repo::list_repos(&config.base_dir)?;
+    let base_dir = config.base_dir.clone();
+    let repos = tokio::task::spawn_blocking(move || repo::list_repos(&base_dir)).await??;
     Ok(Json(repos))
 }
 
@@ -47,10 +48,17 @@ pub async fn clone_handler(
     let depth = payload.depth.unwrap_or(1);
     let base_dir = config.base_dir.clone();
 
-    repo::save_meta(&config.base_dir, &name, &crate::models::RepoMeta {
-        token: token.clone(),
-        status: crate::models::RepoStatus::Cloning,
-    })?;
+    let base_dir_pre = config.base_dir.clone();
+    let name_pre = name.clone();
+    let token_pre = token.clone();
+
+    tokio::task::spawn_blocking(move || {
+        repo::save_meta(&base_dir_pre, &name_pre, &crate::models::RepoMeta {
+            token: token_pre,
+            status: crate::models::RepoStatus::Cloning,
+        })
+    })
+        .await??;
 
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
@@ -98,13 +106,17 @@ pub async fn delete_repo_handler(
         return Err(AppError::NotFound);
     }
 
-    if dir_exists {
-        fs::remove_dir_all(&repo_path)?;
-    }
-
-    if meta_exists {
-        repo::delete_meta(&config.base_dir, &repo_name)?;
-    }
+    let base_dir = config.base_dir.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+        if dir_exists {
+            fs::remove_dir_all(&repo_path)?;
+        }
+        if meta_exists {
+            repo::delete_meta(&base_dir, &repo_name)?;
+        }
+        Ok(())
+    })
+        .await??;
 
     Ok(StatusCode::NO_CONTENT)
 }

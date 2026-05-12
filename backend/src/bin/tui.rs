@@ -1,3 +1,6 @@
+#![allow(clippy::all)]
+#![allow(warnings)]
+
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
     execute,

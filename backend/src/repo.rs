@@ -13,6 +13,7 @@ fn info_path(base_dir: &Path, name: &str) -> PathBuf {
     base_dir.join(format!("{INFO_PREFIX}{name}{INFO_SUFFIX}"))
 }
 
+#[must_use]
 pub fn load_meta(base_dir: &Path, name: &str) -> Option<RepoMeta> {
     let data = fs::read_to_string(info_path(base_dir, name)).ok()?;
     serde_json::from_str(&data).ok()
