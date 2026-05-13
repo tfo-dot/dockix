@@ -83,6 +83,7 @@ pub struct AppConfig {
     pub base_dir: PathBuf,
     pub clone_semaphore: Arc<Semaphore>,
     pub db: crate::db::Db,
+    pub api_key: String,
 }
 #[derive(Serialize)]
 pub struct User {

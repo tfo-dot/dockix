@@ -42,10 +42,18 @@ async fn main() {
 
     let db = db::init_db("dockix.db").expect("Failed to initialize database");
 
+    let api_key = std::env::var("DOCKIX_API_KEY").unwrap_or_else(|_| {
+        let key = auth::generate_token();
+        println!("WARNING: DOCKIX_API_KEY not set. Generated superadmin key for this session:");
+        println!("  {key}");
+        key
+    });
+    
     let config = Arc::new(AppConfig {
         base_dir,
         clone_semaphore: Arc::new(Semaphore::new(max_clones)),
         db,
+        api_key,
     });
 
     let public_routes = Router::new()

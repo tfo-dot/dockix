@@ -19,7 +19,7 @@ pub enum AuthUser {
 #[derive(Clone)]
 pub struct SessionToken(pub String);
 
-fn generate_token() -> String {
+pub fn generate_token() -> String {
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill(&mut bytes);
     bytes.iter().fold(String::with_capacity(64), |mut s, b| {
@@ -34,18 +34,13 @@ pub async fn require_auth(
     mut request: Request,
     next: Next,
 ) -> Result<Response, impl IntoResponse> {
-    let api_key = std::env::var("DOCKIX_API_KEY").unwrap_or_default();
-
-    if !api_key.is_empty() {
-        let provided = request
-            .headers()
-            .get("x-api-key")
-            .and_then(|v| v.to_str().ok());
-
-        if provided == Some(api_key.as_str()) {
-            request.extensions_mut().insert(AuthUser::Superadmin);
-            return Ok(next.run(request).await);
-        }
+    let provided = request
+        .headers()
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok());
+    if provided == Some(config.api_key.as_str()) {
+        request.extensions_mut().insert(AuthUser::Superadmin);
+        return Ok(next.run(request).await);
     }
 
     let token = request
