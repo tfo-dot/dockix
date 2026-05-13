@@ -8,9 +8,23 @@ use std::fs;
 use std::sync::Arc;
 use axum::extract::Path;
 
-use crate::models::{AppConfig, CloneRequest};
+use crate::models::{AppConfig, CloneRequest, PrefetchRequest};
 use crate::errors::AppError;
 use crate::repo;
+
+pub async fn prefetch_handler(
+    State(_config): State<Arc<AppConfig>>,
+    Json(payload): Json<PrefetchRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    repo::validate_repo_url(&payload.url)?;
+
+    let url = payload.url;
+    let token = payload.token;
+
+    let response = tokio::task::spawn_blocking(move || repo::prefetch_repo(&url, token)).await??;
+
+    Ok(Json(response))
+}
 
 pub async fn list_repos_handler(
     State(config): State<Arc<AppConfig>>,
@@ -46,15 +60,18 @@ pub async fn clone_handler(
     let url = payload.url;
     let token = payload.token;
     let depth = payload.depth.unwrap_or(1);
+    let branch = payload.branch;
     let base_dir = config.base_dir.clone();
 
     let base_dir_pre = config.base_dir.clone();
     let name_pre = name.clone();
     let token_pre = token.clone();
+    let branch_pre = branch.clone();
 
     tokio::task::spawn_blocking(move || {
         repo::save_meta(&base_dir_pre, &name_pre, &crate::models::RepoMeta {
             token: token_pre,
+            branch: branch_pre,
             status: crate::models::RepoStatus::Cloning,
         })
     })
@@ -63,10 +80,11 @@ pub async fn clone_handler(
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
 
-        match repo::clone_repo(&url, &target_path, token.clone(), depth) {
+        match repo::clone_repo(&url, &target_path, token.clone(), depth, branch.as_deref()) {
             Ok(()) => {
                 let _ = repo::save_meta(&base_dir, &name, &crate::models::RepoMeta {
                     token,
+                    branch,
                     status: crate::models::RepoStatus::Ready {
                         last_synced_at: chrono::Utc::now(),
                     },
@@ -75,6 +93,7 @@ pub async fn clone_handler(
             Err(e) => {
                 let _ = repo::save_meta(&base_dir, &name, &crate::models::RepoMeta {
                     token,
+                    branch,
                     status: crate::models::RepoStatus::CloneFailed {
                         error: e.to_string(),
                     },

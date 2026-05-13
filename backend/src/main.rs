@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use crate::models::AppConfig;
-use crate::repo_handlers::{clone_handler, list_repos_handler, analyze_repo_handler, delete_repo_handler};
+use crate::repo_handlers::{clone_handler, list_repos_handler, analyze_repo_handler, delete_repo_handler, prefetch_handler};
 use crate::user_handlers::{list_users_handler, get_user_handler, get_me_handler,patch_me_handler, patch_user_handler, create_user_handler, delete_user_handler};
 use crate::auth::{login_handler, logout_handler};
 
@@ -48,7 +48,7 @@ async fn main() {
         println!("  {key}");
         key
     });
-    
+
     let config = Arc::new(AppConfig {
         base_dir,
         clone_semaphore: Arc::new(Semaphore::new(max_clones)),
@@ -60,6 +60,7 @@ async fn main() {
         .route("/auth/login", post(login_handler));
 
     let protected_routes = Router::new()
+        .route("/repos/prefetch", post(prefetch_handler))
         .route("/repos", post(clone_handler))
         .route("/repos", get(list_repos_handler))
         .route("/repos/:repo_name", delete(delete_repo_handler))
