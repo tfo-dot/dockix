@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ChevronRight, ChevronDown, FileCode, Folder, FolderOpen,
   ExternalLink, Tag, Box, Code2, Braces, Hash, AlertCircle,
@@ -65,6 +65,24 @@ export default function GuestDocumentation({ navigate }: { navigate: (p: Page) =
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(FILE_TREE[0].children![0]);
   const [selectedSymbol, setSelectedSymbol] = useState<Symbol | null>(FILE_TREE[0].children![0].symbols![0]);
 
+  // Set URL hash on mount and on symbol change
+  const pushHash = (file: FileNode, sym: Symbol) => {
+    window.location.hash = `/guest/${file.path}::${sym.name}`;
+  };
+
+  useEffect(() => {
+    const defaultFile = FILE_TREE[0].children![0];
+    const defaultSym = defaultFile?.symbols?.[0];
+    if (defaultFile && defaultSym) pushHash(defaultFile, defaultSym);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selectSymbol = (file: FileNode, sym: Symbol) => {
+    setSelectedFile(file);
+    setSelectedSymbol(sym);
+    pushHash(file, sym);
+  };
+
   const toggleFolder = (path: string) =>
     setExpandedFolders(prev => { const s = new Set(prev); s.has(path) ? s.delete(path) : s.add(path); return s; });
 
@@ -88,14 +106,19 @@ export default function GuestDocumentation({ navigate }: { navigate: (p: Page) =
       const isSelected = selectedFile?.path === node.path;
       return (
         <div key={node.path}>
-          <div onClick={() => { setSelectedFile(node); setSelectedSymbol(node.symbols?.[0] ?? null); }}
+          <div onClick={() => {
+              const firstSym = node.symbols?.[0];
+              setSelectedFile(node);
+              setSelectedSymbol(firstSym ?? null);
+              if (firstSym) pushHash(node, firstSym);
+            }}
             className={`flex items-center gap-1.5 py-1.5 rounded-lg cursor-pointer transition text-xs ${isSelected ? "bg-green-500/10 text-green-400" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"}`}
             style={{ paddingLeft: `${8 + depth * 14}px` }}>
             <FileCode size={12} />
             <span className="font-mono">{node.name}</span>
           </div>
           {isSelected && node.symbols?.map(sym => (
-            <div key={sym.name} onClick={() => setSelectedSymbol(sym)}
+            <div key={sym.name} onClick={() => selectSymbol(node, sym)}
               className={`flex items-center gap-1.5 py-1 rounded cursor-pointer transition text-[10px] font-mono ${selectedSymbol?.name === sym.name ? "bg-green-500/10 text-green-400" : "text-slate-500 hover:text-slate-300"}`}
               style={{ paddingLeft: `${8 + (depth + 1) * 14}px` }}>
               <span className={`${kindColor(sym.kind)} p-0.5 rounded`}>{kindIcon(sym.kind)}</span>

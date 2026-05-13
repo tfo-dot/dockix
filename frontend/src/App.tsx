@@ -52,7 +52,19 @@ export default function App() {
     const onHashChange = () => {
       const hash = window.location.hash;
       const page = pageFromHash(hash);
-      if (page) setCurrentPage(page);
+      if (!page) return;
+      // Extract path portion
+      const path = hash.startsWith("#/docs/")
+        ? hash.slice("#/docs/".length)
+        : hash.startsWith("#/guest/")
+        ? hash.slice("#/guest/".length)
+        : "";
+      // Only navigate if page actually changes — don't re-mount on every hash update
+      setCurrentPage(prev => {
+        if (prev !== page) return page;
+        return prev;
+      });
+      if (path) setDocPath(path);
     };
     window.addEventListener("hashchange", onHashChange);
     onHashChange();

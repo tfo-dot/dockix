@@ -108,25 +108,36 @@ export default function Documentation({
   const startX = useRef(0);
   const startW = useRef(0);
 
-  // Restore from docPath (hash routing)
+  // On mount: restore from URL hash OR push default symbol into URL
   useEffect(() => {
-    if (!docPath) return;
-    const [filePath, symbolName] = docPath.split("::");
-    const file = findFileByPath(FILE_TREE, filePath);
-    if (file) {
-      setSelectedFile(file);
-      if (symbolName && file.symbols) {
-        const sym = file.symbols.find(s => s.name === symbolName);
-        if (sym) setSelectedSymbol(sym);
+    if (docPath) {
+      const [filePath, symbolName] = docPath.split("::");
+      const file = findFileByPath(FILE_TREE, filePath);
+      if (file) {
+        setSelectedFile(file);
+        if (symbolName && file.symbols) {
+          const sym = file.symbols.find(s => s.name === symbolName);
+          if (sym) setSelectedSymbol(sym);
+        }
+      }
+    } else {
+      // No hash yet — set default immediately so URL shows path on first load
+      const defaultFile = FILE_TREE[0].children![0];
+      const defaultSym = defaultFile?.symbols?.[0];
+      if (defaultFile && defaultSym) {
+        const path = `${defaultFile.path}::${defaultSym.name}`;
+        window.location.hash = `/docs/${path}`;
+        setDocPath?.(path);
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectSymbol = (file: FileNode, sym: Symbol) => {
     setSelectedFile(file);
     setSelectedSymbol(sym);
     const path = `${file.path}::${sym.name}`;
-    navigate("documentation", path);
+    window.location.hash = `/docs/${path}`;
     setDocPath?.(path);
   };
 
@@ -190,7 +201,20 @@ export default function Documentation({
       return (
         <div key={node.path}>
           <div
-            onClick={() => { setSelectedFile(node); setSelectedSymbol(node.symbols?.[0] ?? null); }}
+            onClick={() => {
+              const firstSym = node.symbols?.[0] ?? null;
+              setSelectedFile(node);
+              setSelectedSymbol(firstSym);
+              if (firstSym) {
+                const path = `${node.path}::${firstSym.name}`;
+                window.location.hash = `/docs/${path}`;
+                setDocPath?.(path);
+              } else {
+                // Empty file — show path without symbol
+                window.location.hash = `/docs/${node.path}`;
+                setDocPath?.(node.path);
+              }
+            }}
             className={`flex items-center gap-1.5 py-1.5 rounded-lg cursor-pointer transition text-xs ${
               isSelected ? "bg-green-500/10 text-green-400" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
             }`}
