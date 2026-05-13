@@ -22,6 +22,8 @@ pub enum RepoStatus {
 pub struct RepoMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
     #[serde(flatten)]
     pub status: RepoStatus,
 }
@@ -40,6 +42,20 @@ pub struct CloneRequest {
     pub name: String,
     pub token: Option<String>,
     pub depth: Option<i32>,
+    pub branch: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct PrefetchRequest {
+    pub url: String,
+    pub token: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct PrefetchResponse {
+    pub default_branch: Option<String>,
+    pub branches: Vec<String>,
+    pub tags: Vec<String>,
 }
 
 #[derive(Serialize)]

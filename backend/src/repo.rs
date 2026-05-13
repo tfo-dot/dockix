@@ -82,6 +82,7 @@ pub fn cleanup_stale_cloning(base_dir: &Path) {
 
                 let _ = save_meta(base_dir, repo_name, &RepoMeta {
                     token: meta.token,
+                    branch: meta.branch,
                     status: RepoStatus::CloneFailed {
                         error: "Clone interrupted by server shutdown".to_string(),
                     },
@@ -91,6 +92,7 @@ pub fn cleanup_stale_cloning(base_dir: &Path) {
             RepoStatus::Syncing { last_synced_at } => {
                 let _ = save_meta(base_dir, repo_name, &RepoMeta {
                     token: meta.token,
+                    branch: meta.branch,
                     status: RepoStatus::Ready { last_synced_at },
                 });
                 eprintln!("  Restored interrupted sync: {repo_name}");
@@ -98,6 +100,7 @@ pub fn cleanup_stale_cloning(base_dir: &Path) {
             RepoStatus::Ready { .. } | RepoStatus::SyncFailed { .. } if !dir_exists => {
                 let _ = save_meta(base_dir, repo_name, &RepoMeta {
                     token: meta.token,
+                    branch: meta.branch,
                     status: RepoStatus::CloneFailed {
                         error: "Repository directory is missing".to_string(),
                     },
@@ -165,7 +168,43 @@ pub fn list_repos(base_dir: &PathBuf) -> Result<Vec<RepoInfo>, AppError> {
     Ok(repos)
 }
 
-pub fn clone_repo(url: &str, target_path: &Path, token: Option<String>, depth: i32) -> Result<(), AppError> {
+pub fn prefetch_repo(url: &str, token: Option<String>) -> Result<crate::models::PrefetchResponse, AppError> {
+    let mut remote = git2::Remote::create_detached(url)?;
+
+    let mut callbacks = git2::RemoteCallbacks::new();
+    if let Some(token) = token {
+        callbacks.credentials(move |_url, _username, _allowed| {
+            git2::Cred::userpass_plaintext("x-access-token", &token)
+        });
+    }
+
+    remote.connect_auth(git2::Direction::Fetch, Some(callbacks), None)?;
+
+    let refs = remote.list()?;
+
+    let mut branches = Vec::new();
+    let mut tags = Vec::new();
+    let mut default_branch = None;
+
+    for head in refs {
+        let name = head.name();
+        if name == "HEAD" {
+            default_branch = head
+                .symref_target()
+                .and_then(|t| t.strip_prefix("refs/heads/"))
+                .map(str::to_owned);
+        } else if let Some(branch) = name.strip_prefix("refs/heads/") {
+            branches.push(branch.to_owned());
+        } else if let Some(tag) = name.strip_prefix("refs/tags/")
+            && !tag.ends_with("^{}") {
+            tags.push(tag.to_owned());
+        }
+    }
+
+    Ok(crate::models::PrefetchResponse { default_branch, branches, tags })
+}
+
+pub fn clone_repo(url: &str, target_path: &Path, token: Option<String>, depth: i32, branch: Option<&str>) -> Result<(), AppError> {
     let mut callbacks = git2::RemoteCallbacks::new();
 
     if let Some(token) = token {
@@ -180,6 +219,9 @@ pub fn clone_repo(url: &str, target_path: &Path, token: Option<String>, depth: i
 
     let mut builder = git2::build::RepoBuilder::new();
     builder.fetch_options(fetch_opts);
+    if let Some(branch) = branch {
+        builder.branch(branch);
+    }
     builder.clone(url, target_path)?;
 
     Ok(())

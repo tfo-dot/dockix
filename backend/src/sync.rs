@@ -43,6 +43,9 @@ fn sync_all_repos(base_dir: &Path) {
 
         let Some(meta) = crate::repo::load_meta(base_dir, name) else { continue };
 
+        let token = meta.token;
+        let branch = meta.branch;
+
         let (crate::models::RepoStatus::Ready { last_synced_at }
         | crate::models::RepoStatus::SyncFailed { last_synced_at, .. }) = meta.status
         else {
@@ -50,15 +53,17 @@ fn sync_all_repos(base_dir: &Path) {
         };
 
         let _ = crate::repo::save_meta(base_dir, name, &crate::models::RepoMeta {
-            token: meta.token,
+            token,
+            branch: branch.clone(),
             status: crate::models::RepoStatus::Syncing { last_synced_at },
         });
 
-        match pull_repo(base_dir, &path) {
+        match pull_repo(base_dir, &path, branch.as_deref()) {
             Ok(()) => {
                 if let Some(meta) = crate::repo::load_meta(base_dir, name) {
                     let _ = crate::repo::save_meta(base_dir, name, &crate::models::RepoMeta {
                         token: meta.token,
+                        branch: meta.branch,
                         status: crate::models::RepoStatus::Ready {
                             last_synced_at: chrono::Utc::now(),
                         },
@@ -70,6 +75,7 @@ fn sync_all_repos(base_dir: &Path) {
                 if let Some(meta) = crate::repo::load_meta(base_dir, name) {
                     let _ = crate::repo::save_meta(base_dir, name, &crate::models::RepoMeta {
                         token: meta.token,
+                        branch: meta.branch,
                         status: crate::models::RepoStatus::SyncFailed {
                             last_synced_at,
                             error: e.clone(),
@@ -83,7 +89,7 @@ fn sync_all_repos(base_dir: &Path) {
     }
 }
 
-fn pull_repo(base_dir: &Path, path: &Path) -> Result<(), String> {
+fn pull_repo(base_dir: &Path, path: &Path, branch: Option<&str>) -> Result<(), String> {
     let repo = git2::Repository::open(path)
         .map_err(|e| e.to_string())?;
 
@@ -107,7 +113,12 @@ fn pull_repo(base_dir: &Path, path: &Path) -> Result<(), String> {
     }
 
     fetch_opts.remote_callbacks(callbacks);
-    remote.fetch(&["refs/heads/*:refs/remotes/origin/*"], Some(&mut fetch_opts), None)
+
+    let refspec = match branch {
+        Some(b) => format!("refs/heads/{b}:refs/remotes/origin/{b}"),
+        None => "refs/heads/*:refs/remotes/origin/*".to_string(),
+    };
+    remote.fetch(&[&refspec], Some(&mut fetch_opts), None)
         .map_err(|e| e.to_string())?;
 
     let fetch_head = repo.find_reference("FETCH_HEAD")
