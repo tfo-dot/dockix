@@ -20,3 +20,8 @@ chrono = { version = "0.4", features = ["serde"] }
 ratatui = "0.26"
 crossterm = "0.27"
 reqwest = { version = "0.12", features = ["json"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+argon2 = "0.5"
+rand = "0.8"
+rand_core = { version = "0.6", features = ["getrandom"] }
