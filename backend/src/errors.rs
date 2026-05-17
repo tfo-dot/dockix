@@ -19,6 +19,7 @@ pub enum AppError {
     AlreadyExists,
     TooManyClones,
     CloneInProgress,
+    Builtin,
     InvalidInput(String),
     GitError(String),
     ParseError(String),
@@ -34,6 +35,7 @@ impl fmt::Display for AppError {
             AppError::AlreadyExists => write!(f, "Already exists"),
             AppError::TooManyClones => write!(f, "Too many clones in progress"),
             AppError::CloneInProgress => write!(f, "Clone is in progress"),
+            AppError::Builtin => write!(f, "Built-in roles cannot be modified"),
             AppError::InvalidInput(msg)
             | AppError::GitError(msg)
             | AppError::ParseError(msg)
@@ -51,6 +53,7 @@ impl IntoResponse for AppError {
             AppError::AlreadyExists => (StatusCode::CONFLICT, "Already exists".to_string()),
             AppError::TooManyClones => (StatusCode::TOO_MANY_REQUESTS, "Too many clones in progress, try again later".to_string()),
             AppError::CloneInProgress => (StatusCode::CONFLICT, "Cannot delete while clone is in progress".to_string()),
+            AppError::Builtin => (StatusCode::BAD_REQUEST, "Built-in roles cannot be modified".to_string()),
             AppError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::GitError(msg) | AppError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
             AppError::ParseError(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
@@ -103,4 +106,3 @@ impl From<rusqlite::Error> for AppError {
         AppError::InternalError(format!("Database error: {err}"))
     }
 }
-

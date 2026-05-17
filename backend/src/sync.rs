@@ -45,6 +45,8 @@ fn sync_all_repos(base_dir: &Path) {
 
         let token = meta.token;
         let branch = meta.branch;
+        let roles = meta.roles;
+        let members = meta.members;
 
         let (crate::models::RepoStatus::Ready { last_synced_at }
         | crate::models::RepoStatus::SyncFailed { last_synced_at, .. }) = meta.status
@@ -53,12 +55,14 @@ fn sync_all_repos(base_dir: &Path) {
         };
 
         let _ = crate::repo::save_meta(base_dir, name, &crate::models::RepoMeta {
-            token,
+            token: token.clone(),
             branch: branch.clone(),
             status: crate::models::RepoStatus::Syncing { last_synced_at },
+            roles: roles.clone(),
+            members: members.clone(),
         });
 
-        match pull_repo(base_dir, &path, branch.as_deref()) {
+        match pull_repo(&path, token.clone(), branch.as_deref()) {
             Ok(()) => {
                 if let Some(meta) = crate::repo::load_meta(base_dir, name) {
                     let _ = crate::repo::save_meta(base_dir, name, &crate::models::RepoMeta {
@@ -67,6 +71,8 @@ fn sync_all_repos(base_dir: &Path) {
                         status: crate::models::RepoStatus::Ready {
                             last_synced_at: chrono::Utc::now(),
                         },
+                        roles: meta.roles,
+                        members: meta.members,
                     });
                 }
                 println!("  Synced: {name}");
@@ -81,6 +87,8 @@ fn sync_all_repos(base_dir: &Path) {
                             error: e.clone(),
                             failed_at: chrono::Utc::now(),
                         },
+                        roles: meta.roles,
+                        members: meta.members,
                     });
                 }
                 eprintln!("  Failed to sync {name}: {e}");
@@ -89,19 +97,12 @@ fn sync_all_repos(base_dir: &Path) {
     }
 }
 
-fn pull_repo(base_dir: &Path, path: &Path, branch: Option<&str>) -> Result<(), String> {
+fn pull_repo(path: &Path, token: Option<String>, branch: Option<&str>) -> Result<(), String> {
     let repo = git2::Repository::open(path)
         .map_err(|e| e.to_string())?;
 
     let mut remote = repo.find_remote("origin")
         .map_err(|e| e.to_string())?;
-
-    let name = path.file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
-
-    let token = crate::repo::load_meta(base_dir, name)
-        .and_then(|meta| meta.token);
 
     let mut fetch_opts = git2::FetchOptions::new();
     let mut callbacks = git2::RemoteCallbacks::new();
