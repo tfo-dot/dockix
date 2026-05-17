@@ -18,6 +18,23 @@ pub enum RepoStatus {
     },
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RepoRole {
+    pub id: String,
+    pub name: String,
+    pub permissions: Vec<String>,
+    pub is_builtin: bool,
+    pub level: u8,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RepoMember {
+    pub user_id: String,
+    pub role_id: Option<String>,
+    pub is_owner: bool,
+    pub joined_at: DateTime<Utc>,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct RepoMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -26,6 +43,10 @@ pub struct RepoMeta {
     pub branch: Option<String>,
     #[serde(flatten)]
     pub status: RepoStatus,
+    #[serde(default)]
+    pub roles: Vec<RepoRole>,
+    #[serde(default)]
+    pub members: Vec<RepoMember>,
 }
 
 #[derive(Serialize)]
@@ -62,9 +83,7 @@ pub struct PrefetchResponse {
 pub struct ParsedRepo {
     pub repo_name: String,
     pub files: Vec<ParsedFile>,
-    // maybe add metadata like total_files, languages_detected, analyzed_at timestamp
 }
-
 #[derive(Serialize)]
 pub struct ParsedFile {
     pub file_path: String,
@@ -135,7 +154,6 @@ pub struct CreateUserResponse {
     pub generated_password: Option<String>,
 }
 
-
 #[derive(Deserialize)]
 pub struct UpdateMeRequest {
     pub name: Option<String>,
@@ -147,4 +165,30 @@ pub struct UpdateMeRequest {
 pub struct UpdateUserRequest {
     pub name: Option<String>,
     pub email: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateRoleRequest {
+    pub name: String,
+    pub permissions: Vec<String>,
+    pub level: Option<u8>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateRoleRequest {
+    pub name: Option<String>,
+    pub permissions: Option<Vec<String>>,
+    pub level: Option<u8>,
+}
+
+#[derive(Deserialize)]
+pub struct AddMemberRequest {
+    pub user_id: String,
+    pub role_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateMemberRequest {
+    pub role_id: Option<String>,
+    pub transfer_ownership: Option<bool>,
 }
