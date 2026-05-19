@@ -152,20 +152,23 @@ pub async fn patch_me_handler(
 }
 
 pub async fn create_user_handler(
-    Extension(auth): Extension<AuthUser>,
+    auth: Option<Extension<AuthUser>>,
     State(config): State<Arc<AppConfig>>,
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let AuthUser::Superadmin = auth else {
-        return Err(AppError::Forbidden);
+    let is_superadmin = matches!(auth, Some(Extension(AuthUser::Superadmin)));
+
+    let generated_password = if is_superadmin {
+        payload.password.is_none().then(|| Uuid::new_v4().to_string())
+    } else {
+        None
     };
 
-    let generated_password = payload.password.is_none().then(|| Uuid::new_v4().to_string());
     let raw_password = payload
         .password
         .as_deref()
         .or(generated_password.as_deref())
-        .unwrap();
+        .ok_or_else(|| AppError::InvalidInput("Password is required".to_string()))?;
 
     let hash = hash_password(raw_password)?;
     let id = Uuid::new_v4().to_string();
