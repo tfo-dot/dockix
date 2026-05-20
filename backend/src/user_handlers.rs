@@ -194,6 +194,25 @@ pub async fn create_user_handler(
     })
         .await??;
 
+    let actor_ev = match &auth {
+        Some(Extension(AuthUser::User { id })) => Some(id.clone()),
+        _ => None,
+    };
+    let db_ev = Arc::clone(&config.db);
+    let user_id_ev = user.id.clone();
+    let email_ev = user.email.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        let conn = db_ev.lock().unwrap();
+        crate::db::write_event(
+            &conn,
+            "user_created",
+            None,
+            actor_ev.as_deref(),
+            &serde_json::json!({"user_id": &user_id_ev, "email": &email_ev}),
+        )
+    })
+        .await;
+
     Ok((
         StatusCode::CREATED,
         Json(CreateUserResponse {
@@ -252,6 +271,7 @@ pub async fn delete_user_handler(
         return Err(AppError::Forbidden);
     };
 
+    let id_ev = id.clone();
     let db = Arc::clone(&config.db);
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let conn = db.lock().unwrap();
@@ -263,6 +283,19 @@ pub async fn delete_user_handler(
         Ok(())
     })
         .await??;
+
+    let db_ev = Arc::clone(&config.db);
+    let _ = tokio::task::spawn_blocking(move || {
+        let conn = db_ev.lock().unwrap();
+        crate::db::write_event(
+            &conn,
+            "user_deleted",
+            None,
+            None,
+            &serde_json::json!({"user_id": &id_ev}),
+        )
+    })
+        .await;
 
     Ok(StatusCode::NO_CONTENT)
 }

@@ -192,3 +192,13 @@ pub struct UpdateMemberRequest {
     pub role_id: Option<String>,
     pub transfer_ownership: Option<bool>,
 }
+
+#[derive(Serialize)]
+pub struct RepoEvent {
+    pub id: i64,
+    pub kind: String,
+    pub repo_name: Option<String>,
+    pub actor_id: Option<String>,
+    pub detail: serde_json::Value,
+    pub created_at: String,
+}

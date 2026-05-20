@@ -37,3 +37,19 @@ pub fn init_db(path: &str) -> Result<Db, AppError> {
 
     Ok(Arc::new(Mutex::new(conn)))
 }
+
+pub fn write_event(
+    conn: &Connection,
+    kind: &str,
+    repo_name: Option<&str>,
+    actor_id: Option<&str>,
+    detail: &serde_json::Value,
+) -> Result<(), AppError> {
+    let detail_str = detail.to_string();
+    let created_at = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO events (kind, repo_name, actor_id, detail, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![kind, repo_name, actor_id, detail_str, created_at],
+    )?;
+    Ok(())
+}
