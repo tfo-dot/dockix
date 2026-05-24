@@ -1,7 +1,35 @@
-import React from "react";
-import { Terminal, Activity, Layers, Table as TableIcon, ArrowRight, Eye } from "lucide-react";
+import React, { useState } from "react";
+import { Terminal, Activity, Layers, Table as TableIcon, ArrowRight, Eye, Loader, AlertCircle } from "lucide-react";
+import { authApi, userApi } from "../api/client";
+import type { User } from "../api/client";
 
-export default function LandingPage({ onStart, onGuest }: { onStart: () => void; onGuest: () => void }) {
+interface Props {
+  onStart: () => void;
+  onGuest: () => void;
+  onLoginSuccess: (user: User) => void;
+}
+
+export default function LandingPage({ onGuest, onLoginSuccess }: Props) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleLogin = async () => {
+    if (!email || !password) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await authApi.login(email, password);
+      const me = await userApi.me();
+      onLoginSuccess(me);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0f1115] text-slate-300 font-sans selection:bg-green-500/30">
       <nav className="p-8">
@@ -34,31 +62,53 @@ export default function LandingPage({ onStart, onGuest }: { onStart: () => void;
           </div>
         </div>
 
-        {/* Right: CTA */}
-        <div className="flex flex-col gap-8">
+        {/* Right: Login form */}
+        <div className="flex flex-col gap-6">
           <div className="bg-slate-900/50 border border-slate-800 p-8 rounded-2xl">
-            <div className="flex items-center gap-6 mb-8">
-              <div className="relative w-24 h-24 flex items-center justify-center">
-                <svg className="w-full h-full transform -rotate-90">
-                  <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-800" />
-                  <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent"
-                    strokeDasharray={251.2} strokeDashoffset={251.2 * (1 - 0.78)}
-                    className="text-green-500" strokeLinecap="round" />
-                </svg>
-                <span className="absolute text-xl font-bold text-white">78%</span>
+            <h2 className="text-xl font-bold text-white mb-1">Sign in</h2>
+            <p className="text-slate-500 text-sm mb-6">Log in to your Dockix account.</p>
+
+            {error && (
+              <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2.5 mb-4">
+                <AlertCircle size={14} /> {error}
+              </div>
+            )}
+
+            <div className="space-y-3 mb-5">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  onKeyDown={e => e.key === "Enter" && handleLogin()}
+                  className="w-full bg-[#0d1117] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-green-500 transition-colors"
+                />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white uppercase tracking-tight">Indexing Process</h3>
-                <p className="text-slate-500 text-sm">Automated documentation in progress...</p>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  onKeyDown={e => e.key === "Enter" && handleLogin()}
+                  className="w-full bg-[#0d1117] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-green-500 transition-colors"
+                />
               </div>
             </div>
 
             <div className="flex flex-col gap-3">
               <button
-                onClick={onStart}
-                className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 px-6 rounded-xl transition flex items-center justify-center gap-2 group"
+                onClick={handleLogin}
+                disabled={loading || !email || !password}
+                className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 px-6 rounded-xl transition flex items-center justify-center gap-2 group"
               >
-                GET STARTED <ArrowRight size={18} className="group-hover:translate-x-1 transition" />
+                {loading
+                  ? <><Loader size={16} className="animate-spin" /> Signing in...</>
+                  : <>Sign in <ArrowRight size={16} className="group-hover:translate-x-1 transition" /></>
+                }
               </button>
               <button
                 onClick={onGuest}

@@ -1,17 +1,61 @@
 import React, { useState } from "react";
 import Sidebar from "../components/Sidebar";
-import { Bell, Eye, Cloud, Trash2, User, Mail, ShieldCheck, Camera } from "lucide-react";
-import type { Page, User as UserType } from "../App";
+import { Bell, Eye, Cloud, Trash2, Mail, ShieldCheck, Camera, Loader, Check } from "lucide-react";
+import { userApi } from "../api/client";
+import type { Page, User } from "../App";
 
 interface Props {
   navigate: (p: Page) => void;
-  user?: UserType | null;
+  user?: User | null;
   onLogout?: () => void;
+  currentRepo?: string;
+  setCurrentRepo?: (r: string) => void;
 }
 
 export default function Settings({ navigate, user, onLogout }: Props) {
-  const [name, setName] = useState(user?.name ?? "User2137");
-  const [email] = useState(user?.email ?? "user2137@dockix.ai");
+  const [name, setName] = useState(user?.name ?? "");
+  const [password, setPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true); setError(null); setSaved(false);
+    const hasPasswordChange = password.length > 0;
+    try {
+      await userApi.updateMe({
+        name: name || undefined,
+        password: password || undefined,
+      });
+      if (hasPasswordChange) {
+        // Backend unieważnia token po zmianie hasła — trzeba się wylogować
+        setSaved(true);
+        setTimeout(() => {
+          alert("Password changed. You will be logged out.");
+          onLogout?.();
+        }, 800);
+      } else {
+        setSaved(true);
+        setPassword("");
+        setTimeout(() => setSaved(false), 3000);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!showDeleteConfirm) {
+      setShowDeleteConfirm(true);
+      return;
+    }
+    // Backend nie ma DELETE /user/@me — pokazujemy info
+    alert("Account deletion must be performed by an administrator.");
+    setShowDeleteConfirm(false);
+  };
 
   return (
     <div className="flex min-h-screen bg-[#0f1115]">
@@ -31,55 +75,58 @@ export default function Settings({ navigate, user, onLogout }: Props) {
               <div className="flex items-center gap-5 mb-6">
                 <div className="relative">
                   <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-green-500 to-blue-600 flex items-center justify-center text-white font-bold text-2xl">
-                    {name[0]}
+                    {(name || user?.name || "U")[0].toUpperCase()}
                   </div>
                   <button className="absolute -bottom-1 -right-1 w-6 h-6 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-full flex items-center justify-center transition">
                     <Camera size={11} className="text-slate-300" />
                   </button>
                 </div>
                 <div>
-                  <p className="text-white font-semibold">{name}</p>
-                  <p className="text-xs text-slate-500">{email}</p>
+                  <p className="text-white font-semibold">{name || user?.name}</p>
+                  <p className="text-xs text-slate-500">{user?.email}</p>
                 </div>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
-                    Display Name
-                  </label>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 transition-colors"
-                  />
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Display Name</label>
+                  <input value={name} onChange={e => setName(e.target.value)}
+                    className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 transition-colors" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
-                    Email
-                  </label>
-                  <div className="flex items-center gap-2 w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3 py-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Email</label>
+                  <div className="flex items-center gap-2 w-full bg-[#0d1117] border border-slate-800 rounded-lg px-3 py-2 opacity-60">
                     <Mail size={13} className="text-slate-500 shrink-0" />
-                    <span className="text-sm text-slate-400">{email}</span>
+                    <span className="text-sm text-slate-400">{user?.email}</span>
                   </div>
+                  <p className="text-[10px] text-slate-600 mt-1">Email cannot be changed here.</p>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
-                    Security
-                  </label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">New Password</label>
+                  <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                    placeholder="Leave blank to keep current"
+                    className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 transition-colors" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Security</label>
                   <div className="flex items-center gap-2 text-green-400 text-sm">
-                    <ShieldCheck size={14} />
-                    Two-Factor Authentication enabled
+                    <ShieldCheck size={14} /> Session-based authentication active
                   </div>
                 </div>
-                <button className="bg-white text-black font-bold px-5 py-2 rounded-lg text-sm hover:bg-slate-200 transition">
-                  Save Changes
+
+                {error && <p className="text-xs text-red-400">{error}</p>}
+
+                <button onClick={handleSave} disabled={saving}
+                  className="flex items-center gap-2 bg-white text-black font-bold px-5 py-2 rounded-lg text-sm hover:bg-slate-200 disabled:opacity-50 transition">
+                  {saving ? <><Loader size={13} className="animate-spin" /> Saving...</>
+                  : saved ? <><Check size={13} /> Saved</>
+                  : "Save Changes"}
                 </button>
               </div>
             </div>
           </section>
 
-          {/* Preferences */}
+          {/* Preferences (local only — no backend endpoint) */}
           <section className="space-y-4">
             <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">Preferences</h3>
             <div className="bg-[#161b22] border border-slate-800 rounded-xl overflow-hidden">
@@ -87,6 +134,7 @@ export default function Settings({ navigate, user, onLogout }: Props) {
               <SettingsToggle icon={<Eye size={16} />} label="Public Profile" description="Allow others to see your documentation activity" />
               <SettingsToggle icon={<Cloud size={16} />} label="Auto-sync Repositories" description="Periodically check for new commits" defaultChecked />
             </div>
+            <p className="text-[10px] text-slate-600 ml-1">Preferences are stored locally — backend support coming soon.</p>
           </section>
 
           {/* Danger zone */}
@@ -96,15 +144,33 @@ export default function Settings({ navigate, user, onLogout }: Props) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-white font-medium text-sm">Delete Account</p>
-                  <p className="text-xs text-slate-500 mt-1">Permanently remove all your data and indexed projects.</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {showDeleteConfirm
+                      ? "Click again to confirm. This cannot be undone."
+                      : "Permanently removes your account and all data."}
+                  </p>
                 </div>
-                <button className="bg-red-500/10 hover:bg-red-500/20 text-red-500 px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2">
-                  <Trash2 size={13} /> Delete
+                <button
+                  onClick={handleDeleteAccount}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
+                    showDeleteConfirm
+                      ? "bg-red-500 hover:bg-red-600 text-white"
+                      : "bg-red-500/10 hover:bg-red-500/20 text-red-500"
+                  }`}
+                >
+                  <Trash2 size={13} /> {showDeleteConfirm ? "Confirm Delete" : "Delete"}
                 </button>
               </div>
+              {showDeleteConfirm && (
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="mt-3 text-xs text-slate-500 hover:text-white transition"
+                >
+                  Cancel
+                </button>
+              )}
             </div>
           </section>
-
         </div>
       </main>
     </div>
@@ -123,11 +189,8 @@ function SettingsToggle({ icon, label, description, defaultChecked = false }: {
           <p className="text-xs text-slate-500">{description}</p>
         </div>
       </div>
-      <input
-        type="checkbox"
-        defaultChecked={defaultChecked}
-        className="w-10 h-5 bg-slate-700 rounded-full appearance-none checked:bg-green-500 cursor-pointer transition-colors"
-      />
+      <input type="checkbox" defaultChecked={defaultChecked}
+        className="w-10 h-5 bg-slate-700 rounded-full appearance-none checked:bg-green-500 cursor-pointer transition-colors" />
     </div>
   );
 }
