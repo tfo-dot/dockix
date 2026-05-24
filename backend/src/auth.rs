@@ -16,6 +16,16 @@ pub enum AuthUser {
     Superadmin,
     User { id: String },
 }
+
+impl AuthUser {
+    pub fn actor_id(&self) -> Option<&str> {
+        match self {
+            AuthUser::Superadmin => None,
+            AuthUser::User { id } => Some(id.as_str()),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct SessionToken(pub String);
 

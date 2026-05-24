@@ -16,6 +16,7 @@ use crate::models::{
     UpdateMemberRequest, UpdateRoleRequest,
 };
 use crate::repo;
+
 fn load_meta_as_member(
     base_dir: &std::path::Path,
     repo_name: &str,
@@ -82,6 +83,7 @@ pub async fn list_repos_handler(
     Ok(Json(repos))
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn clone_handler(
     Extension(auth): Extension<AuthUser>,
     State(config): State<Arc<AppConfig>>,
@@ -120,6 +122,9 @@ pub async fn clone_handler(
     let url = payload.url;
     let token = payload.token;
     let depth = payload.depth.unwrap_or(1);
+    if !(0..=10).contains(&depth) {
+        return Err(AppError::InvalidInput("Depth must be between 0 and 10".to_string()));
+    }
     let branch = payload.branch;
     let base_dir = config.base_dir.clone();
 
@@ -152,6 +157,9 @@ pub async fn clone_handler(
     })
         .await??;
 
+    let db_ev = Arc::clone(&config.db);
+    let actor_ev = auth.actor_id().map(str::to_owned);
+
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
 
@@ -159,6 +167,13 @@ pub async fn clone_handler(
             Ok(()) => {
                 let (roles, members) = repo::load_meta(&base_dir, &name)
                     .map_or_else(|| (initial_roles, initial_members), |m| (m.roles, m.members));
+                let _ = crate::db::write_event(
+                    &db_ev.lock().unwrap(),
+                    "repo_cloned",
+                    Some(&name),
+                    actor_ev.as_deref(),
+                    &serde_json::json!({"url": &url, "branch": &branch}),
+                );
                 let _ = repo::save_meta(&base_dir, &name, &crate::models::RepoMeta {
                     token,
                     branch,
@@ -172,6 +187,13 @@ pub async fn clone_handler(
             Err(e) => {
                 let (roles, members) = repo::load_meta(&base_dir, &name)
                     .map_or_else(|| (initial_roles, initial_members), |m| (m.roles, m.members));
+                let _ = crate::db::write_event(
+                    &db_ev.lock().unwrap(),
+                    "repo_clone_failed",
+                    Some(&name),
+                    actor_ev.as_deref(),
+                    &serde_json::json!({"url": &url, "error": e.to_string()}),
+                );
                 let _ = repo::save_meta(&base_dir, &name, &crate::models::RepoMeta {
                     token,
                     branch,
@@ -220,7 +242,11 @@ pub async fn delete_repo_handler(
         return Err(AppError::NotFound);
     }
 
+    let actor = auth.actor_id().map(str::to_owned);
+    let repo_name_ev = repo_name.clone();
+    let db_ev = Arc::clone(&config.db);
     let base_dir = config.base_dir.clone();
+
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         if dir_exists {
             fs::remove_dir_all(&repo_path)?;
@@ -231,6 +257,12 @@ pub async fn delete_repo_handler(
         Ok(())
     })
         .await??;
+
+    let _ = tokio::task::spawn_blocking(move || {
+        let conn = db_ev.lock().unwrap();
+        crate::db::write_event(&conn, "repo_deleted", Some(&repo_name_ev), actor.as_deref(), &serde_json::json!({}))
+    })
+        .await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -325,6 +357,21 @@ pub async fn create_role_handler(
     meta.roles.push(role.clone());
     repo::save_meta(&config.base_dir, &repo_name, &meta)?;
 
+    let actor = auth.actor_id().map(str::to_owned);
+    let db_ev = Arc::clone(&config.db);
+    let repo_name_ev = repo_name.clone();
+    let detail = serde_json::json!({
+        "role_id": &role.id,
+        "name": &role.name,
+        "level": role.level,
+        "permissions": &role.permissions,
+    });
+    let _ = tokio::task::spawn_blocking(move || {
+        let conn = db_ev.lock().unwrap();
+        crate::db::write_event(&conn, "role_created", Some(&repo_name_ev), actor.as_deref(), &detail)
+    })
+        .await;
+
     Ok((StatusCode::CREATED, Json(role)))
 }
 
@@ -399,6 +446,21 @@ pub async fn update_role_handler(
     let updated = meta.roles[role_idx].clone();
     repo::save_meta(&config.base_dir, &repo_name, &meta)?;
 
+    let actor = auth.actor_id().map(str::to_owned);
+    let db_ev = Arc::clone(&config.db);
+    let repo_name_ev = repo_name.clone();
+    let detail = serde_json::json!({
+        "role_id": &updated.id,
+        "name": &updated.name,
+        "level": updated.level,
+        "permissions": &updated.permissions,
+    });
+    let _ = tokio::task::spawn_blocking(move || {
+        let conn = db_ev.lock().unwrap();
+        crate::db::write_event(&conn, "role_updated", Some(&repo_name_ev), actor.as_deref(), &detail)
+    })
+        .await;
+
     Ok(Json(updated))
 }
 
@@ -431,8 +493,19 @@ pub async fn delete_role_handler(
         ));
     }
 
+    let deleted_role = meta.roles[role_idx].clone();
     meta.roles.remove(role_idx);
     repo::save_meta(&config.base_dir, &repo_name, &meta)?;
+
+    let actor = auth.actor_id().map(str::to_owned);
+    let db_ev = Arc::clone(&config.db);
+    let repo_name_ev = repo_name.clone();
+    let detail = serde_json::json!({"role_id": &deleted_role.id, "name": &deleted_role.name});
+    let _ = tokio::task::spawn_blocking(move || {
+        let conn = db_ev.lock().unwrap();
+        crate::db::write_event(&conn, "role_deleted", Some(&repo_name_ev), actor.as_deref(), &detail)
+    })
+        .await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -489,6 +562,9 @@ pub async fn add_member_handler(
     })
         .await??;
 
+    let added_user_id = payload.user_id.clone();
+    let added_role_id = role_id.clone();
+
     meta.members.push(RepoMember {
         user_id: payload.user_id,
         role_id: Some(role_id),
@@ -497,6 +573,16 @@ pub async fn add_member_handler(
     });
 
     repo::save_meta(&config.base_dir, &repo_name, &meta)?;
+
+    let actor = auth.actor_id().map(str::to_owned);
+    let db_ev = Arc::clone(&config.db);
+    let repo_name_ev = repo_name.clone();
+    let detail = serde_json::json!({"user_id": &added_user_id, "role_id": &added_role_id});
+    let _ = tokio::task::spawn_blocking(move || {
+        let conn = db_ev.lock().unwrap();
+        crate::db::write_event(&conn, "member_added", Some(&repo_name_ev), actor.as_deref(), &detail)
+    })
+        .await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -515,6 +601,9 @@ pub async fn update_member_handler(
 
     let target_idx = meta.members.iter().position(|m| m.user_id == target_user_id)
         .ok_or(AppError::NotFound)?;
+
+    let old_owner_id = meta.members.iter().find(|m| m.is_owner).map(|m| m.user_id.clone());
+    let old_role_id = meta.members[target_idx].role_id.clone();
 
     if let Some(true) = payload.transfer_ownership {
         let repo_has_owner = meta.members.iter().any(|m| m.is_owner);
@@ -563,6 +652,38 @@ pub async fn update_member_handler(
 
     repo::save_meta(&config.base_dir, &repo_name, &meta)?;
 
+    let actor = auth.actor_id().map(str::to_owned);
+    let db_ev = Arc::clone(&config.db);
+    let repo_name_ev = repo_name.clone();
+    let target_id_ev = target_user_id.clone();
+
+    let mut events: Vec<(&'static str, serde_json::Value)> = Vec::new();
+
+    if let Some(true) = payload.transfer_ownership {
+        events.push(("ownership_transferred", serde_json::json!({
+            "from_user_id": &old_owner_id,
+            "to_user_id": &target_id_ev,
+        })));
+    }
+
+    if let Some(ref new_role_id) = payload.role_id {
+        events.push(("member_role_changed", serde_json::json!({
+            "user_id": &target_id_ev,
+            "old_role_id": &old_role_id,
+            "new_role_id": new_role_id,
+        })));
+    }
+
+    if !events.is_empty() {
+        let _ = tokio::task::spawn_blocking(move || {
+            let conn = db_ev.lock().unwrap();
+            for (kind, detail) in events {
+                let _ = crate::db::write_event(&conn, kind, Some(&repo_name_ev), actor.as_deref(), &detail);
+            }
+        })
+            .await;
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -604,6 +725,16 @@ pub async fn remove_member_handler(
 
     meta.members.remove(target_idx);
     repo::save_meta(&config.base_dir, &repo_name, &meta)?;
+
+    let actor = auth.actor_id().map(str::to_owned);
+    let db_ev = Arc::clone(&config.db);
+    let repo_name_ev = repo_name.clone();
+    let detail = serde_json::json!({"user_id": &target_user_id});
+    let _ = tokio::task::spawn_blocking(move || {
+        let conn = db_ev.lock().unwrap();
+        crate::db::write_event(&conn, "member_removed", Some(&repo_name_ev), actor.as_deref(), &detail)
+    })
+        .await;
 
     Ok(StatusCode::NO_CONTENT)
 }

@@ -6,6 +6,7 @@ mod repo_handlers;
 mod auth;
 mod sync;
 mod db;
+mod event_handlers;
 
 mod user_handlers;
 
@@ -26,6 +27,7 @@ use crate::repo_handlers::{
 };
 use crate::user_handlers::{list_users_handler, get_user_handler, get_me_handler,patch_me_handler, patch_user_handler, create_user_handler, delete_user_handler};
 use crate::auth::{login_handler, logout_handler};
+use crate::event_handlers::{get_repo_events_handler, get_admin_events_handler};
 
 #[tokio::main]
 async fn main() {
@@ -70,10 +72,12 @@ async fn main() {
         .route("/repos", get(list_repos_handler))
         .route("/repos/:repo_name", delete(delete_repo_handler))
         .route("/repos/:repo_name/analysis", get(analyze_repo_handler))
+        .route("/repos/:repo_name/events", get(get_repo_events_handler))
         .route("/repos/:repo_name/role", get(list_roles_handler).post(create_role_handler))
         .route("/repos/:repo_name/role/:role_id", patch(update_role_handler).delete(delete_role_handler))
         .route("/repos/:repo_name/member", get(list_members_handler).post(add_member_handler))
         .route("/repos/:repo_name/member/:user_id", patch(update_member_handler).delete(remove_member_handler))
+        .route("/admin/events", get(get_admin_events_handler))
         .route("/user/list", get(list_users_handler))
         .route("/user/@me", get(get_me_handler).patch(patch_me_handler))
         .route("/user/:id", get(get_user_handler).patch(patch_user_handler).delete(delete_user_handler))
