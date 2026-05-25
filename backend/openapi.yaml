@@ -20,6 +20,8 @@ tags:
     description: Managing members and their roles within a repository
   - name: Code Analysis
     description: Endpoints for parsing and analyzing repository structure
+  - name: Events
+    description: Endpoints for tracking system and repository events
 
 paths:
   /auth/login:
@@ -110,16 +112,19 @@ paths:
       tags:
         - User Management
       summary: Get current user info
-      description: Returns information about the authenticated user.
+      description: Returns information about the authenticated user or superadmin status.
       security:
         - bearerAuth: []
+        - apiKeyAuth: []
       responses:
         '200':
           description: User information
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                oneOf:
+                  - $ref: '#/components/schemas/User'
+                  - $ref: '#/components/schemas/SuperadminInfo'
     patch:
       tags:
         - User Management
@@ -142,6 +147,8 @@ paths:
                 $ref: '#/components/schemas/User'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /user/{id}:
     get:
@@ -278,14 +285,15 @@ paths:
       responses:
         '202':
           description: Clone process started
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '429':
-          description: Too many concurrent clones
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: string
+                example: "Clone started, check GET /repos for status"
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /repos/{repo_name}:
     delete:
@@ -342,6 +350,35 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /repos/{repo_name}/events:
+    get:
+      tags:
+        - Events
+      summary: List repository events
+      description: Returns events associated with a specific repository. Visibility depends on user permissions.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of repository events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RepoEvent'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /repos/{repo_name}/role:
     get:
@@ -394,6 +431,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RepoRole'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '403':
           $ref: '#/components/responses/Forbidden'
 
@@ -434,6 +473,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     delete:
       tags:
         - Role Management
@@ -460,6 +501,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /repos/{repo_name}/member:
     get:
@@ -508,8 +551,12 @@ paths:
       responses:
         '204':
           description: Member added successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
 
@@ -542,8 +589,12 @@ paths:
       responses:
         '204':
           description: Member updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     delete:
       tags:
         - Member Management
@@ -566,6 +617,28 @@ paths:
       responses:
         '204':
           description: Member removed successfully
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/events:
+    get:
+      tags:
+        - Events
+      summary: List all system events
+      description: Returns all global and repository events. Superadmin access required.
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: A list of system events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RepoEvent'
         '403':
           $ref: '#/components/responses/Forbidden'
 
@@ -607,6 +680,18 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     Conflict:
       description: Resource already exists or state conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: Too many requests or concurrent operations
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Semantic errors in the request (e.g., parse errors)
       content:
         application/json:
           schema:
@@ -660,6 +745,15 @@ components:
           type: string
           format: date-time
 
+    SuperadminInfo:
+      type: object
+      required:
+        - role
+      properties:
+        role:
+          type: string
+          enum: [superadmin]
+
     CreateUserRequest:
       type: object
       required:
@@ -675,12 +769,25 @@ components:
           type: string
 
     CreateUserResponse:
-      allOf:
-        - $ref: '#/components/schemas/User'
-        - type: object
-          properties:
-            generated_password:
-              type: string
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - created_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        created_at:
+          type: string
+          format: date-time
+        generated_password:
+          type: string
 
     UpdateMeRequest:
       type: object
@@ -714,6 +821,9 @@ components:
 
     PrefetchResponse:
       type: object
+      required:
+        - branches
+        - tags
       properties:
         default_branch:
           type: string
@@ -1009,3 +1119,29 @@ components:
         default_value:
           type: string
           nullable: true
+
+    RepoEvent:
+      type: object
+      required:
+        - id
+        - kind
+        - detail
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          type: string
+        repo_name:
+          type: string
+          nullable: true
+        actor_id:
+          type: string
+          nullable: true
+        detail:
+          type: object
+          description: Event-specific details as a JSON object
+        created_at:
+          type: string
+          format: date-time
