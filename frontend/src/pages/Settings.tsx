@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import Sidebar from "../components/Sidebar";
-import { Bell, Eye, Cloud, Trash2, Mail, ShieldCheck, Camera, Loader, Check } from "lucide-react";
+import { Bell, Eye, Cloud, Mail, ShieldCheck, Camera, Loader, Check, Copy } from "lucide-react";
 import { userApi } from "../api/client";
 import type { Page, User } from "../App";
 
@@ -18,7 +18,14 @@ export default function Settings({ navigate, user, onLogout }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
+
+  const copyUserId = () => {
+    if (!user?.id || user.id === "superadmin") return;
+    navigator.clipboard.writeText(user.id);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  };
 
   const handleSave = async () => {
     setSaving(true); setError(null); setSaved(false);
@@ -101,6 +108,25 @@ export default function Settings({ navigate, user, onLogout }: Props) {
                   </div>
                   <p className="text-[10px] text-slate-600 mt-1">Email cannot be changed here.</p>
                 </div>
+                {/* User ID — potrzebny żeby admin repo mógł dodać Cię do projektu */}
+                {user?.id && user.id !== "superadmin" && (
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
+                      User ID
+                      <span className="ml-2 normal-case font-normal text-slate-600">— share with repo admins to be added to a project</span>
+                    </label>
+                    <div className="flex items-center gap-2 w-full bg-[#0d1117] border border-slate-800 rounded-lg px-3 py-2">
+                      <span className="text-sm text-slate-400 font-mono flex-1 truncate">{user.id}</span>
+                      <button
+                        onClick={copyUserId}
+                        title="Copy User ID"
+                        className="shrink-0 p-1 rounded hover:bg-slate-700 text-slate-500 hover:text-white transition"
+                      >
+                        {copiedId ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">New Password</label>
                   <input type="password" value={password} onChange={e => setPassword(e.target.value)}
@@ -135,41 +161,6 @@ export default function Settings({ navigate, user, onLogout }: Props) {
               <SettingsToggle icon={<Cloud size={16} />} label="Auto-sync Repositories" description="Periodically check for new commits" defaultChecked />
             </div>
             <p className="text-[10px] text-slate-600 ml-1">Preferences are stored locally — backend support coming soon.</p>
-          </section>
-
-          {/* Danger zone */}
-          <section className="space-y-4">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-red-500/80">Danger Zone</h3>
-            <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-white font-medium text-sm">Delete Account</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {showDeleteConfirm
-                      ? "Click again to confirm. This cannot be undone."
-                      : "Permanently removes your account and all data."}
-                  </p>
-                </div>
-                <button
-                  onClick={handleDeleteAccount}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
-                    showDeleteConfirm
-                      ? "bg-red-500 hover:bg-red-600 text-white"
-                      : "bg-red-500/10 hover:bg-red-500/20 text-red-500"
-                  }`}
-                >
-                  <Trash2 size={13} /> {showDeleteConfirm ? "Confirm Delete" : "Delete"}
-                </button>
-              </div>
-              {showDeleteConfirm && (
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="mt-3 text-xs text-slate-500 hover:text-white transition"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
           </section>
         </div>
       </main>

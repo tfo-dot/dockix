@@ -8,7 +8,6 @@ import {
   Settings,
   LogOut,
   Shield,
-  User,
 } from "lucide-react";
 import type { Page, User as UserType } from "../App";
 
@@ -74,11 +73,6 @@ export default function Sidebar({ activePage, navigate, user, onLogout }: Sideba
             <div className="px-4 py-3 border-b border-slate-700/60">
               <p className="text-xs text-slate-500 truncate">{user?.email ?? "—"}</p>
             </div>
-            <DropdownItem
-              icon={<User size={14} />}
-              label="Profile & Account"
-              onClick={() => { navigate("settings"); setProfileOpen(false); }}
-            />
             <DropdownItem
               icon={<Settings size={14} />}
               label="Settings"

@@ -9,20 +9,12 @@ import ProjectManagement from "./pages/ProjectManagement";
 import AdminDashboard from "./pages/AdminDashboard";
 import Project from "./pages/Project";
 import GuestDocumentation from "./pages/GuestDocumentation";
-import { authApi, userApi } from "./api/client";
-import type { User as ApiUser } from "./api/client";
+import { authApi, userApi, isSuperadminResponse } from "./api/client";
+import type { MeResponse } from "./api/client";
 
 export type Page =
-  | "landing"
-  | "onboarding"
-  | "indexing"
-  | "dashboard"
-  | "project"
-  | "documentation"
-  | "project-management"
-  | "settings"
-  | "admin"
-  | "guest-docs";
+  | "landing" | "onboarding" | "indexing" | "dashboard" | "project"
+  | "documentation" | "project-management" | "settings" | "admin" | "guest-docs";
 
 export type User = {
   id: string;
@@ -31,10 +23,23 @@ export type User = {
   role: "admin" | "user";
 };
 
+// Superadmin placeholder gdy /user/@me zwraca tylko {role:"superadmin"}
+const SUPERADMIN_USER: User = {
+  id: "superadmin",
+  name: "Superadmin",
+  email: "",
+  role: "admin",
+};
+
 function pageFromHash(hash: string): Page | null {
   if (hash.startsWith("#/docs/")) return "documentation";
   if (hash.startsWith("#/guest/")) return "guest-docs";
   return null;
+}
+
+function meToUser(res: MeResponse): User {
+  if (isSuperadminResponse(res)) return SUPERADMIN_USER;
+  return { id: res.id, name: res.name, email: res.email, role: "user" };
 }
 
 export default function App() {
@@ -44,24 +49,16 @@ export default function App() {
   const [docPath, setDocPath] = useState<string>("");
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Przy starcie: jeśli jest token w localStorage, pobierz dane zalogowanego użytkownika
+  // Przy starcie: jeśli jest token lub api key, odtwórz sesję
   useEffect(() => {
     if (authApi.isLoggedIn()) {
       userApi.me()
-        .then((apiUser: ApiUser) => {
-          setUser({
-            id: apiUser.id,
-            name: apiUser.name,
-            email: apiUser.email,
-            // Backend nie zwraca roli w /user/@me – domyślnie "user"
-            // Superadmin jest rozróżniany przez x-api-key, nie przez pole w User
-            role: "user",
-          });
+        .then((res: MeResponse) => {
+          setUser(meToUser(res));
           setCurrentPage("dashboard");
         })
         .catch(() => {
-          // Token wygasł lub nieważny
-          localStorage.removeItem("dockix_token");
+          authApi.clearAll();
         })
         .finally(() => setAuthLoading(false));
     } else {
@@ -69,7 +66,7 @@ export default function App() {
     }
   }, []);
 
-  // Hash-based routing
+  // Hash routing
   useEffect(() => {
     const onHashChange = () => {
       const hash = window.location.hash;
@@ -100,24 +97,16 @@ export default function App() {
     setCurrentPage(page);
   };
 
-  const handleLoginSuccess = (apiUser: ApiUser) => {
-    setUser({
-      id: apiUser.id,
-      name: apiUser.name,
-      email: apiUser.email,
-      role: "user",
-    });
+  const handleLoginSuccess = (res: MeResponse) => {
+    setUser(meToUser(res));
     navigate("dashboard");
   };
 
   const handleLogout = async () => {
-    // Zawsze czyścimy stan lokalny niezależnie od odpowiedzi backendu
-    // (token może być już nieważny np. po zmianie hasła)
     try {
       await authApi.logout();
     } catch {
-      // Ignorujemy błąd - token i tak usuwamy
-      localStorage.removeItem("dockix_token");
+      authApi.clearAll();
     } finally {
       setUser(null);
       setCurrentRepo("");
@@ -140,49 +129,23 @@ export default function App() {
       case "landing":
         return (
           <LandingPage
-            onStart={() => navigate("landing")} // LandingPage obsługuje login sam
             onGuest={() => navigate("guest-docs")}
             onLoginSuccess={handleLoginSuccess}
           />
         );
       case "onboarding":
-        return (
-          <Onboarding
-            onComplete={(repoName: string) => {
-              setCurrentRepo(repoName);
-              navigate("indexing");
-            }}
-          />
-        );
+        return <Onboarding onComplete={(repoName: string) => { setCurrentRepo(repoName); navigate("indexing"); }} />;
       case "indexing":
-        return (
-          <Indexing
-            repoName={currentRepo}
-            onComplete={() => navigate("project-management")}
-          />
-        );
-      case "dashboard":
-        return <Dashboard {...commonProps} />;
-      case "project":
-        return <Project {...commonProps} />;
-      case "documentation":
-        return (
-          <Documentation
-            {...commonProps}
-            docPath={docPath}
-            setDocPath={setDocPath}
-          />
-        );
-      case "project-management":
-        return <ProjectManagement {...commonProps} />;
-      case "settings":
-        return <Settings {...commonProps} />;
-      case "admin":
-        return <AdminDashboard {...commonProps} />;
-      case "guest-docs":
-        return <GuestDocumentation navigate={navigate} />;
+        return <Indexing repoName={currentRepo} onComplete={() => navigate("project-management")} />;
+      case "dashboard":        return <Dashboard {...commonProps} />;
+      case "project":          return <Project {...commonProps} />;
+      case "documentation":    return <Documentation {...commonProps} docPath={docPath} setDocPath={setDocPath} />;
+      case "project-management": return <ProjectManagement {...commonProps} />;
+      case "settings":         return <Settings {...commonProps} />;
+      case "admin":            return <AdminDashboard {...commonProps} />;
+      case "guest-docs":       return <GuestDocumentation navigate={navigate} />;
       default:
-        return <LandingPage onStart={() => navigate("landing")} onGuest={() => navigate("guest-docs")} onLoginSuccess={handleLoginSuccess} />;
+        return <LandingPage onGuest={() => navigate("guest-docs")} onLoginSuccess={handleLoginSuccess} />;
     }
   };
 

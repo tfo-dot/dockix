@@ -1,12 +1,14 @@
 import React, { useState } from "react";
-import { Terminal, Activity, Layers, Table as TableIcon, ArrowRight, Eye, Loader, AlertCircle } from "lucide-react";
+import {
+  Terminal, Activity, Layers, Table as TableIcon,
+  ArrowRight, Eye, Loader, AlertCircle, Key, ChevronDown,
+} from "lucide-react";
 import { authApi, userApi } from "../api/client";
-import type { User } from "../api/client";
+import type { MeResponse } from "../api/client";
 
 interface Props {
-  onStart: () => void;
   onGuest: () => void;
-  onLoginSuccess: (user: User) => void;
+  onLoginSuccess: (res: MeResponse) => void;
 }
 
 export default function LandingPage({ onGuest, onLoginSuccess }: Props) {
@@ -15,18 +17,42 @@ export default function LandingPage({ onGuest, onLoginSuccess }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Superadmin API key section
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [apiKeyLoading, setApiKeyLoading] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+
   const handleLogin = async () => {
     if (!email || !password) return;
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       await authApi.login(email, password);
       const me = await userApi.me();
       onLoginSuccess(me);
-    } catch (e: unknown) {
+    } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApiKeyLogin = async () => {
+    if (!apiKey.trim()) return;
+    setApiKeyLoading(true); setApiKeyError(null);
+    try {
+      const ok = await authApi.loginWithApiKey(apiKey.trim());
+      if (!ok) {
+        setApiKeyError("Key is valid but does not have superadmin access.");
+        return;
+      }
+      // Pobierz dane superadmina
+      const me = await userApi.me();
+      onLoginSuccess(me);
+    } catch (e) {
+      setApiKeyError(e instanceof Error ? e.message : "Invalid key");
+    } finally {
+      setApiKeyLoading(false);
     }
   };
 
@@ -50,10 +76,10 @@ export default function LandingPage({ onGuest, onLoginSuccess }: Props) {
               <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Analysis Engine</span>
             </div>
             <div className="p-6 font-mono text-sm leading-relaxed">
-              <CodeLine n={6} content={<><span className="text-blue-400">def</span> <span className="text-yellow-200">parse_code</span>(d):</>} />
-              <CodeLine n={7} content={<span className="text-slate-400 pl-4 block"># processing AST nodes...</span>} />
-              <CodeLine n={8} content={<><span className="text-blue-400">def</span> <span className="text-yellow-200">build_docs</span>(tokens):</>} />
-              <CodeLine n={9} content={<span className="pl-4 block">current = parse_code(tokens)</span>} />
+              <CodeLine n={6}  content={<><span className="text-blue-400">def</span> <span className="text-yellow-200">parse_code</span>(d):</>} />
+              <CodeLine n={7}  content={<span className="text-slate-400 pl-4 block"># processing AST nodes...</span>} />
+              <CodeLine n={8}  content={<><span className="text-blue-400">def</span> <span className="text-yellow-200">build_docs</span>(tokens):</>} />
+              <CodeLine n={9}  content={<span className="pl-4 block">current = parse_code(tokens)</span>} />
               <CodeLine n={10} content={<span className="pl-4 block"><span className="text-purple-400">return</span> <span className="text-orange-300">True</span></span>} />
               <CodeLine n={11} content={<><span className="text-blue-400">if</span> (symbols) {"{"}</>} />
               <CodeLine n={12} content={<span className="pl-4 block text-green-400">docs.generate();</span>} />
@@ -62,8 +88,8 @@ export default function LandingPage({ onGuest, onLoginSuccess }: Props) {
           </div>
         </div>
 
-        {/* Right: Login form */}
-        <div className="flex flex-col gap-6">
+        {/* Right: Login */}
+        <div className="flex flex-col gap-5">
           <div className="bg-slate-900/50 border border-slate-800 p-8 rounded-2xl">
             <h2 className="text-xl font-bold text-white mb-1">Sign in</h2>
             <p className="text-slate-500 text-sm mb-6">Log in to your Dockix account.</p>
@@ -77,46 +103,82 @@ export default function LandingPage({ onGuest, onLoginSuccess }: Props) {
             <div className="space-y-3 mb-5">
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   onKeyDown={e => e.key === "Enter" && handleLogin()}
-                  className="w-full bg-[#0d1117] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-green-500 transition-colors"
-                />
+                  className="w-full bg-[#0d1117] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-green-500 transition-colors" />
               </div>
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
                   onKeyDown={e => e.key === "Enter" && handleLogin()}
-                  className="w-full bg-[#0d1117] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-green-500 transition-colors"
-                />
+                  className="w-full bg-[#0d1117] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-green-500 transition-colors" />
               </div>
             </div>
 
             <div className="flex flex-col gap-3">
-              <button
-                onClick={handleLogin}
-                disabled={loading || !email || !password}
-                className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 px-6 rounded-xl transition flex items-center justify-center gap-2 group"
-              >
+              <button onClick={handleLogin} disabled={loading || !email || !password}
+                className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 px-6 rounded-xl transition flex items-center justify-center gap-2 group">
                 {loading
                   ? <><Loader size={16} className="animate-spin" /> Signing in...</>
-                  : <>Sign in <ArrowRight size={16} className="group-hover:translate-x-1 transition" /></>
-                }
+                  : <>Sign in <ArrowRight size={16} className="group-hover:translate-x-1 transition" /></>}
               </button>
-              <button
-                onClick={onGuest}
-                className="w-full border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white font-medium py-3 px-6 rounded-xl transition flex items-center justify-center gap-2"
-              >
+              <button onClick={onGuest}
+                className="w-full border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white font-medium py-3 px-6 rounded-xl transition flex items-center justify-center gap-2">
                 <Eye size={15} /> Browse docs as guest
               </button>
             </div>
+          </div>
+
+          {/* Superadmin API Key section */}
+          <div className="border border-slate-800 rounded-2xl overflow-hidden">
+            <button
+              onClick={() => setShowApiKey(v => !v)}
+              className="w-full flex items-center justify-between px-5 py-3.5 bg-slate-900/30 hover:bg-slate-800/40 transition text-left"
+            >
+              <div className="flex items-center gap-2">
+                <Key size={14} className="text-slate-500" />
+                <span className="text-xs font-bold text-slate-500">Superadmin access</span>
+                <span className="text-[10px] text-slate-600">— use key from backend startup</span>
+              </div>
+              <ChevronDown size={14} className={`text-slate-600 transition-transform ${showApiKey ? "rotate-180" : ""}`} />
+            </button>
+
+            {showApiKey && (
+              <div className="px-5 pb-5 pt-4 bg-slate-900/20 space-y-3">
+                <p className="text-[10px] text-slate-600 leading-relaxed">
+                  When you start the backend, the terminal shows:<br />
+                  <code className="text-slate-400 bg-slate-800 px-1 rounded">WARNING: Generated superadmin key: &lt;key&gt;</code><br />
+                  Paste that key here. It is stored in localStorage as <code className="text-slate-400">dockix_api_key</code> and sent as <code className="text-slate-400">x-api-key</code> header.
+                </p>
+
+                {apiKeyError && (
+                  <div className="flex items-center gap-2 text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                    <AlertCircle size={12} /> {apiKeyError}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={e => setApiKey(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleApiKeyLogin()}
+                    placeholder="Paste superadmin key..."
+                    className="flex-1 bg-[#0d1117] border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-amber-500 transition-colors"
+                  />
+                  <button
+                    onClick={handleApiKeyLogin}
+                    disabled={!apiKey.trim() || apiKeyLoading}
+                    className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-lg transition text-xs flex items-center gap-2"
+                  >
+                    {apiKeyLoading ? <Loader size={13} className="animate-spin" /> : <Key size={13} />}
+                    Login
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

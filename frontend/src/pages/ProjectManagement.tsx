@@ -4,22 +4,36 @@ import {
   ShieldCheck, Users, Eye, Edit3, Trash2, Plus, ChevronRight,
   X, Check, AlertCircle, Clock, Lock, Save, Mail, Loader,
 } from "lucide-react";
-import { rolesApi, membersApi, userApi, ApiError } from "../api/client";
+import { rolesApi, membersApi, userApi, authApi, ApiError } from "../api/client";
 import type { RepoRole, RepoMember, User as ApiUser } from "../api/client";
 import type { Page, User } from "../App";
 
 type Tab = "users" | "roles" | "events";
 
-const ALL_PERMISSIONS = [
-  { id: "read_docs", label: "Read Documentation", description: "View all documentation" },
-  { id: "write_docs", label: "Edit Documentation", description: "Manually edit documentation entries" },
-  { id: "sync_repo", label: "Sync Repository", description: "Trigger re-indexing" },
-  { id: "manage_users", label: "Manage Users", description: "Invite, remove, change roles" },
-  { id: "manage_roles", label: "Manage Roles", description: "Create and modify roles" },
-  { id: "delete_project", label: "Delete Project", description: "Permanently delete this project" },
-];
+// Przyjazne etykiety dla uprawnień z backendu
+// Klucze = dokładne stringi zwracane przez backend
+function permLabel(id: string): { label: string; description: string } {
+  const map: Record<string, { label: string; description: string }> = {
+    // Rzeczywiste uprawnienia z backendu
+    analyze:        { label: "Analyze Repository", description: "Run analysis and view documentation" },
+    sync:           { label: "Sync Repository",    description: "Trigger re-indexing and synchronization" },
+    manage_members: { label: "Manage Members",     description: "Invite and remove members, change their roles" },
+    manage_roles:   { label: "Manage Roles",       description: "Create, edit and delete custom roles" },
+    // Aliasy na wypadek innych wariantów
+    read_docs:      { label: "Read Documentation", description: "View all generated documentation" },
+    write_docs:     { label: "Edit Documentation", description: "Manually edit documentation entries" },
+    sync_repo:      { label: "Sync Repository",    description: "Trigger re-indexing" },
+    manage_users:   { label: "Manage Members",     description: "Invite, remove, change roles" },
+    delete_project: { label: "Delete Project",     description: "Permanently delete this project" },
+  };
+  // Fallback: zamień _ na spacje i kapitalizuj
+  return map[id] ?? {
+    label: id.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+    description: "",
+  };
+}
 
-// ── Modals ────────────────────────────────────────────────────────────────────
+// ── Modal shell ───────────────────────────────────────────────────────────────
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -35,45 +49,69 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-function InviteModal({ repoName, roles, onClose, onDone }: {
-  repoName: string; roles: RepoRole[]; onClose: () => void; onDone: () => void;
+// ── Invite Modal ──────────────────────────────────────────────────────────────
+
+function InviteModal({ repoName, roles, isSuperadmin, onClose, onDone }: {
+  repoName: string; roles: RepoRole[]; isSuperadmin: boolean;
+  onClose: () => void; onDone: () => void;
 }) {
   const [email, setEmail] = useState("");
+  const [userId, setUserId] = useState("");
   const [roleId, setRoleId] = useState(roles[1]?.id ?? roles[0]?.id ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const validUserId = userId.trim().length > 8;
+  const canSubmit = isSuperadmin ? validEmail : validUserId;
 
   const submit = async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
-      // Backend expects user_id, not email — find user by email first
-      const users = await userApi.list();
-      const found = users.find(u => u.email === email);
-      if (!found) throw new Error(`No user found with email: ${email}`);
-      await membersApi.add(repoName, found.id, roleId || undefined);
-      onDone();
-      onClose();
+      if (isSuperadmin) {
+        // Superadmin może listować użytkowników — szukamy po emailu
+        const users = await userApi.list();
+        const found = users.find(u => u.email === email);
+        if (!found) throw new Error(`No user found with email: ${email}`);
+        await membersApi.add(repoName, found.id, roleId || undefined);
+      } else {
+        // Zwykły user nie ma dostępu do GET /user/list — używa bezpośrednio user ID
+        await membersApi.add(repoName, userId.trim(), roleId || undefined);
+      }
+      onDone(); onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add member");
+      const msg = e instanceof ApiError && e.status === 403
+        ? "You don't have permission to add members to this repository."
+        : e instanceof Error ? e.message : "Failed";
+      setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Modal title="Invite Member" onClose={onClose}>
+    <Modal title="Add Member" onClose={onClose}>
       <div className="space-y-4">
-        <div>
-          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Email address</label>
-          <div className="flex items-center gap-2 bg-[#0d1117] border border-slate-700 rounded-lg px-3 py-2.5 focus-within:border-green-500 transition-colors">
-            <Mail size={14} className="text-slate-500 shrink-0" />
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="colleague@company.com"
-              className="bg-transparent text-sm text-white outline-none flex-1 placeholder:text-slate-600" />
+        {isSuperadmin ? (
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Email</label>
+            <div className="flex items-center gap-2 bg-[#0d1117] border border-slate-700 rounded-lg px-3 py-2.5 focus-within:border-green-500">
+              <Mail size={13} className="text-slate-500 shrink-0" />
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="colleague@company.com"
+                className="bg-transparent text-sm text-white outline-none flex-1 placeholder:text-slate-600" />
+            </div>
           </div>
-        </div>
+        ) : (
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">User ID</label>
+            <input value={userId} onChange={e => setUserId(e.target.value)}
+              placeholder="e.g. bdd88e91-8b47-49d6-82fe-a9e64b477f70"
+              className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-green-500 transition-colors placeholder:text-slate-700" />
+            <p className="text-[10px] text-slate-600 mt-1.5 leading-relaxed">
+              Ask the person to go to <span className="text-slate-400">Settings → Account</span> and share their User ID with you.
+            </p>
+          </div>
+        )}
         <div>
           <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Role</label>
           <select value={roleId} onChange={e => setRoleId(e.target.value)}
@@ -84,7 +122,7 @@ function InviteModal({ repoName, roles, onClose, onDone }: {
         {error && <p className="text-xs text-red-400 flex items-center gap-1.5"><AlertCircle size={11} /> {error}</p>}
         <div className="flex gap-3 pt-2">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-slate-700 text-slate-400 hover:text-white transition text-sm">Cancel</button>
-          <button disabled={!valid || loading} onClick={submit}
+          <button disabled={!canSubmit || loading} onClick={submit}
             className="flex-1 py-2.5 rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold transition text-sm flex items-center justify-center gap-2">
             {loading ? <><Loader size={13} className="animate-spin" /> Adding...</> : "Add Member"}
           </button>
@@ -94,27 +132,30 @@ function InviteModal({ repoName, roles, onClose, onDone }: {
   );
 }
 
-function NewRoleModal({ repoName, onClose, onDone }: { repoName: string; onClose: () => void; onDone: () => void }) {
+// ── New Role Modal ────────────────────────────────────────────────────────────
+
+function NewRoleModal({ repoName, availablePermissions, onClose, onDone }: {
+  repoName: string;
+  availablePermissions: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const [name, setName] = useState("");
-  const [permissions, setPermissions] = useState<string[]>(["read_docs"]);
+  // Domyślnie zaznaczamy pierwsze uprawnienie jeśli istnieje
+  const [permissions, setPermissions] = useState<string[]>(
+    availablePermissions.length > 0 ? [availablePermissions[0]] : []
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const toggle = (id: string) =>
-    setPermissions(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+  const toggle = (id: string) => setPermissions(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
 
   const submit = async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
-      // Wysyłamy tylko name i permissions — level jest opcjonalny
       await rolesApi.create(repoName, name.trim(), permissions);
-      onDone();
-      onClose();
+      onDone(); onClose();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to create role";
-      // Pokaż szczegóły błędu jeśli to ApiError
-      setError(msg);
+      setError(e instanceof Error ? e.message : "Failed");
     } finally {
       setLoading(false);
     }
@@ -129,29 +170,39 @@ function NewRoleModal({ repoName, onClose, onDone }: { repoName: string; onClose
             className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-green-500 transition-colors" />
         </div>
         <div>
-          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-2">Permissions</label>
-          <div className="space-y-1.5">
-            {ALL_PERMISSIONS.map(perm => {
-              const has = permissions.includes(perm.id);
-              return (
-                <div key={perm.id} onClick={() => toggle(perm.id)}
-                  className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition ${has ? "bg-green-500/5 border-green-500/20" : "border-slate-800 hover:border-slate-700"}`}>
-                  <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${has ? "bg-green-500 text-black" : "bg-slate-800"}`}>
-                    {has && <Check size={10} />}
+          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-2">
+            Permissions
+            {availablePermissions.length === 0 && (
+              <span className="ml-2 text-amber-500 normal-case font-normal">— loading from backend...</span>
+            )}
+          </label>
+          {availablePermissions.length === 0 ? (
+            <p className="text-slate-600 text-xs py-4 text-center">No permissions available. Make sure Admin role exists in this repo.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {availablePermissions.map(permId => {
+                const { label, description } = permLabel(permId);
+                const has = permissions.includes(permId);
+                return (
+                  <div key={permId} onClick={() => toggle(permId)}
+                    className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition ${has ? "bg-green-500/5 border-green-500/20" : "border-slate-800 hover:border-slate-700"}`}>
+                    <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${has ? "bg-green-500 text-black" : "bg-slate-800"}`}>
+                      {has && <Check size={10} />}
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-white">{label}</p>
+                      {description && <p className="text-[10px] text-slate-600">{description}</p>}
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-white">{perm.label}</p>
-                    <p className="text-[10px] text-slate-600">{perm.description}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
         {error && <p className="text-xs text-red-400 flex items-center gap-1.5"><AlertCircle size={11} /> {error}</p>}
         <div className="flex gap-3 pt-2">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-slate-700 text-slate-400 hover:text-white transition text-sm">Cancel</button>
-          <button disabled={!name.trim() || loading} onClick={submit}
+          <button disabled={!name.trim() || loading || availablePermissions.length === 0} onClick={submit}
             className="flex-1 py-2.5 rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold transition text-sm flex items-center justify-center gap-2">
             {loading ? <><Loader size={13} className="animate-spin" /> Creating...</> : "Create Role"}
           </button>
@@ -164,12 +215,8 @@ function NewRoleModal({ repoName, onClose, onDone }: { repoName: string; onClose
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function ProjectManagement({ navigate, user, onLogout, currentRepo, isNewProject = false, onComplete }: {
-  navigate: (p: Page) => void;
-  user?: User | null;
-  onLogout?: () => void;
-  currentRepo?: string;
-  isNewProject?: boolean;
-  onComplete?: () => void;
+  navigate: (p: Page) => void; user?: User | null; onLogout?: () => void;
+  currentRepo?: string; isNewProject?: boolean; onComplete?: () => void;
 }) {
   const repoName = currentRepo ?? "";
   const [tab, setTab] = useState<Tab>("users");
@@ -182,28 +229,33 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
   const [editedPerms, setEditedPerms] = useState<string[]>([]);
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [savedRoleId, setSavedRoleId] = useState<string | null>(null);
+  const [deletingRoleId, setDeletingRoleId] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [showNewRole, setShowNewRole] = useState(false);
+
+  // Uprawnienia dostępne w systemie — bierzemy z roli Admin (ma wszystkie)
+  // Dzięki temu nie używamy hardkodowanych stringów, które backend może odrzucić
+  const availablePermissions: string[] = React.useMemo(() => {
+    const adminRole = roles.find(r => r.name.toLowerCase() === "admin" || r.is_builtin);
+    if (adminRole && adminRole.permissions.length > 0) return adminRole.permissions;
+    // fallback: unia wszystkich uprawnień ze wszystkich ról
+    return [...new Set(roles.flatMap(r => r.permissions))];
+  }, [roles]);
 
   const reload = async () => {
     if (!repoName) return;
     setLoading(true);
     try {
-      const [r, m] = await Promise.all([
-        rolesApi.list(repoName),
-        membersApi.list(repoName),
-      ]);
+      const [r, m] = await Promise.all([rolesApi.list(repoName), membersApi.list(repoName)]);
       setRoles(r);
       setMembers(m);
-      // Pobierz dane użytkowników dla wyświetlenia
-      const userIds = m.map(mem => mem.user_id);
-      const userData: Record<string, ApiUser> = {};
-      await Promise.all(userIds.map(async id => {
-        try { userData[id] = await userApi.getById(id); } catch { /* skip */ }
+      const ud: Record<string, ApiUser> = {};
+      await Promise.all(m.map(async mem => {
+        try { ud[mem.user_id] = await userApi.getById(mem.user_id); } catch { /* skip */ }
       }));
-      setUserMap(userData);
+      setUserMap(ud);
     } catch (e) {
-      console.error("Failed to load management data", e);
+      console.error("Management load failed:", e);
     } finally {
       setLoading(false);
     }
@@ -211,16 +263,13 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
 
   useEffect(() => { reload(); }, [repoName]);
 
-  const startEditRole = (role: RepoRole) => {
-    setEditingRoleId(role.id);
-    setEditedPerms([...role.permissions]);
-  };
+  const startEdit = (role: RepoRole) => { setEditingRoleId(role.id); setEditedPerms([...role.permissions]); };
 
   const saveRole = async (roleId: string) => {
     setSavingRoleId(roleId);
     try {
       await rolesApi.update(repoName, roleId, { permissions: editedPerms });
-      setRoles(prev => prev.map(r => r.id === roleId ? { ...r, permissions: editedPerms } : r));
+      setRoles(p => p.map(r => r.id === roleId ? { ...r, permissions: editedPerms } : r));
       setEditingRoleId(null);
       setSavedRoleId(roleId);
       setTimeout(() => setSavedRoleId(null), 2000);
@@ -231,25 +280,44 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
     }
   };
 
-  const removeMember = async (userId: string) => {
-    if (!confirm("Remove this member from the repository?")) return;
+  const deleteRole = async (role: RepoRole) => {
+    if (!confirm(`Delete role "${role.name}"? Members with this role will lose it.`)) return;
+    setDeletingRoleId(role.id);
     try {
-      await membersApi.remove(repoName, userId);
-      setMembers(prev => prev.filter(m => m.user_id !== userId));
+      await rolesApi.delete(repoName, role.id);
+      setRoles(p => p.filter(r => r.id !== role.id));
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Remove failed");
+      const msg = e instanceof ApiError && e.status === 409
+        ? "Cannot delete a role that is still assigned to members."
+        : e instanceof Error ? e.message : "Delete failed";
+      alert(msg);
+    } finally {
+      setDeletingRoleId(null);
     }
   };
 
+  const removeMember = async (userId: string) => {
+    // Zabezpieczenie: nie możesz usunąć samego siebie z repo
+    if (userId === user?.id) {
+      alert("You cannot remove yourself from this repository.");
+      return;
+    }
+    if (!confirm("Remove this member from the repository?")) return;
+    try {
+      await membersApi.remove(repoName, userId);
+      setMembers(p => p.filter(m => m.user_id !== userId));
+    } catch (e) { alert(e instanceof Error ? e.message : "Remove failed"); }
+  };
+
   const changeRole = async (userId: string, roleId: string, isOwner: boolean) => {
-    if (isOwner) return; // Backend zwróci 403 — blokujemy na poziomie UI
+    if (isOwner) return;
     try {
       await membersApi.update(repoName, userId, { role_id: roleId });
-      setMembers(prev => prev.map(m => m.user_id === userId ? { ...m, role_id: roleId } : m));
+      setMembers(p => p.map(m => m.user_id === userId ? { ...m, role_id: roleId } : m));
     } catch (e) {
       const msg = e instanceof ApiError && e.status === 403
-        ? "Cannot change role of the repository owner."
-        : e instanceof Error ? e.message : "Update failed";
+        ? "Permission denied. Only the repository owner or superadmin can change member roles."
+        : e instanceof Error ? e.message : "Failed";
       alert(msg);
     }
   };
@@ -260,16 +328,18 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
     <div className="flex min-h-screen bg-[#0f1115]">
       <Sidebar activePage="project-management" navigate={navigate} user={user} onLogout={onLogout} />
 
-      {showInvite && <InviteModal repoName={repoName} roles={roles} onClose={() => setShowInvite(false)} onDone={reload} />}
-      {showNewRole && <NewRoleModal repoName={repoName} onClose={() => setShowNewRole(false)} onDone={reload} />}
+      {showInvite && <InviteModal repoName={repoName} roles={roles} isSuperadmin={authApi.isSuperadmin()} onClose={() => setShowInvite(false)} onDone={reload} />}
+      {showNewRole && <NewRoleModal repoName={repoName} availablePermissions={availablePermissions} onClose={() => setShowNewRole(false)} onDone={reload} />}
 
       <main className="flex-1 flex flex-col overflow-y-auto">
         {previewRoleId && (
           <div className="bg-amber-500/10 border-b border-amber-500/30 px-8 py-3 flex items-center justify-between sticky top-0 z-20">
             <div className="flex items-center gap-3">
               <Eye size={15} className="text-amber-400" />
-              <span className="text-sm text-amber-400 font-medium">Preview mode — <strong>{previewRole?.name}</strong></span>
-              <span className="text-xs text-amber-600">Editing is disabled.</span>
+              <span className="text-sm text-amber-400 font-medium">
+                Preview mode — viewing as <strong>{previewRole?.name}</strong>
+              </span>
+              <span className="text-xs text-amber-600">Editing is disabled. Role selectors show read-only view.</span>
             </div>
             <button onClick={() => setPreviewRoleId(null)}
               className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-white bg-amber-500/10 hover:bg-amber-500/20 px-3 py-1.5 rounded-lg transition font-bold">
@@ -282,11 +352,7 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold text-white">Management</h2>
             {repoName && <span className="text-xs font-mono text-slate-500">/ {repoName}</span>}
-            {isNewProject && (
-              <span className="text-[10px] bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-full font-bold uppercase">
-                New Project Setup
-              </span>
-            )}
+            {isNewProject && <span className="text-[10px] bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-full font-bold uppercase">New Project Setup</span>}
           </div>
           {isNewProject && onComplete && (
             <button onClick={onComplete} className="flex items-center gap-2 px-5 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-xl text-sm transition">
@@ -299,7 +365,7 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
           {!repoName && (
             <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl flex items-center gap-3 mb-6">
               <AlertCircle size={15} className="text-amber-400" />
-              <p className="text-sm text-slate-400">No repository selected. Go to Dashboard and open a repository first.</p>
+              <p className="text-sm text-slate-400">No repository selected. Open one from Dashboard first.</p>
             </div>
           )}
 
@@ -308,10 +374,9 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
             {(["users", "roles", "events"] as Tab[]).map(t => (
               <button key={t} onClick={() => setTab(t)}
                 className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition ${tab === t ? "bg-slate-700 text-white" : "text-slate-500 hover:text-slate-300"}`}>
-                {t === "users" && <Users size={11} className="inline mr-1.5" />}
-                {t === "roles" && <ShieldCheck size={11} className="inline mr-1.5" />}
-                {t === "events" && <Clock size={11} className="inline mr-1.5" />}
-                {t}
+                {t === "users" && <><Users size={11} className="inline mr-1.5" />Users</>}
+                {t === "roles" && <><ShieldCheck size={11} className="inline mr-1.5" />Roles</>}
+                {t === "events" && <><Clock size={11} className="inline mr-1.5" />Events</>}
               </button>
             ))}
           </div>
@@ -348,30 +413,49 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
                               <p className="text-sm font-medium text-white">{u?.name ?? member.user_id}</p>
                               <p className="text-xs text-slate-500 font-mono">{u?.email ?? ""}</p>
                             </div>
-                            {member.is_owner && (
-                              <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full font-bold">Owner</span>
-                            )}
+                            {member.is_owner && <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full font-bold">Owner</span>}
+                            {member.user_id === user?.id && <span className="text-[10px] text-green-500 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full font-bold">you</span>}
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className="text-[10px] text-slate-600">
-                              {new Date(member.joined_at).toLocaleDateString()}
-                            </span>
+                            <span className="text-[10px] text-slate-600">{new Date(member.joined_at).toLocaleDateString()}</span>
                             {previewRoleId ? (
                               <span className="text-xs text-slate-400">{role?.name ?? "—"}</span>
-                            ) : (
-                              <select
-                                value={member.role_id ?? ""}
-                                onChange={e => changeRole(member.user_id, e.target.value, member.is_owner)}
-                                disabled={member.is_owner}
-                                title={member.is_owner ? "Cannot change owner's role" : undefined}
-                                className="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-2 py-1.5 focus:outline-none focus:border-green-500 disabled:opacity-40 disabled:cursor-not-allowed"
-                              >
-                                <option value="">No role</option>
-                                {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                              </select>
-                            )}
-                            {!previewRoleId && !member.is_owner && (
-                              <button onClick={() => removeMember(member.user_id)}
+                            ) : (() => {
+                              const isSelf = member.user_id === user?.id;
+                              const isLocked = member.is_owner || isSelf;
+                              // Zwykły user nie może przypisać roli Admin (tylko superadmin)
+                              const assignableRoles = authApi.isSuperadmin()
+                                ? roles
+                                : roles.filter(r => !r.is_builtin || r.name.toLowerCase() !== "admin");
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <select
+                                    value={member.role_id ?? ""}
+                                    onChange={e => {
+                                      if (!e.target.value) return;
+                                      changeRole(member.user_id, e.target.value, member.is_owner);
+                                    }}
+                                    disabled={isLocked}
+                                    title={
+                                      member.is_owner ? "Cannot change owner's role"
+                                      : isSelf ? "Cannot change your own role"
+                                      : undefined
+                                    }
+                                    className="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-2 py-1.5 focus:outline-none focus:border-green-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    {!member.role_id && <option value="">No role</option>}
+                                    {assignableRoles.map(r => (
+                                      <option key={r.id} value={r.id}>{r.name}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              );
+                            })()}
+                            {/* Ukryj przycisk usuwania dla właściciela i dla samego siebie */}
+                            {!previewRoleId && !member.is_owner && member.user_id !== user?.id && (
+                              <button
+                                onClick={() => removeMember(member.user_id)}
+                                title="Remove from repository"
                                 className="p-1.5 hover:bg-red-500/10 text-slate-600 hover:text-red-400 rounded-lg transition">
                                 <Trash2 size={13} />
                               </button>
@@ -401,7 +485,7 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
                       return (
                         <div key={role.id} className="bg-[#161b22] border border-slate-800 rounded-xl overflow-hidden">
                           <div className="flex items-center justify-between p-5 border-b border-slate-800">
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 flex-wrap">
                               <span className="text-xs font-bold px-2.5 py-1 rounded-full border text-slate-300 bg-slate-800 border-slate-700">{role.name}</span>
                               {role.is_builtin
                                 ? <span className="text-[10px] text-slate-600 flex items-center gap-1"><Lock size={9} /> built-in · read-only</span>
@@ -413,46 +497,62 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
                             </div>
                             <div className="flex items-center gap-2">
                               <button onClick={() => setPreviewRoleId(previewRoleId === role.id ? null : role.id)}
-                                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-bold transition ${
-                                  previewRoleId === role.id ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "text-slate-400 hover:text-white border-slate-700"}`}>
-                                <Eye size={12} /> Preview
+                                title="See the UI as a user with this role (disables editing)"
+                                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-bold transition ${previewRoleId === role.id ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "text-slate-400 hover:text-white border-slate-700"}`}>
+                                <Eye size={12} /> {previewRoleId === role.id ? "Exit Preview" : "Preview"}
                               </button>
                               {!role.is_builtin && !previewRoleId && (
-                                isEditing ? (
-                                  <button onClick={() => saveRole(role.id)} disabled={savingRoleId === role.id}
-                                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white font-bold transition">
-                                    {savingRoleId === role.id ? <Loader size={12} className="animate-spin" /> : <Save size={12} />} Save
+                                <>
+                                  {isEditing ? (
+                                    <button onClick={() => saveRole(role.id)} disabled={savingRoleId === role.id}
+                                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white font-bold transition">
+                                      {savingRoleId === role.id ? <Loader size={12} className="animate-spin" /> : <Save size={12} />} Save
+                                    </button>
+                                  ) : (
+                                    <button onClick={() => startEdit(role)} className="p-1.5 hover:bg-slate-800 text-slate-500 hover:text-white rounded-lg transition">
+                                      <Edit3 size={13} />
+                                    </button>
+                                  )}
+                                  {/* DELETE /repos/:repo/role/:id */}
+                                  <button
+                                    onClick={() => deleteRole(role)}
+                                    disabled={deletingRoleId === role.id}
+                                    title="Delete role"
+                                    className="p-1.5 hover:bg-red-500/10 text-slate-600 hover:text-red-400 rounded-lg transition disabled:opacity-50"
+                                  >
+                                    {deletingRoleId === role.id ? <Loader size={13} className="animate-spin" /> : <Trash2 size={13} />}
                                   </button>
-                                ) : (
-                                  <button onClick={() => startEditRole(role)} className="p-1.5 hover:bg-slate-800 text-slate-500 hover:text-white rounded-lg transition">
-                                    <Edit3 size={13} />
-                                  </button>
-                                )
+                                </>
                               )}
                             </div>
                           </div>
                           <div className="p-5 grid grid-cols-2 gap-2">
-                            {ALL_PERMISSIONS.map(perm => {
-                              const has = perms.includes(perm.id);
+                            {availablePermissions.map(permId => {
+                              const { label, description } = permLabel(permId);
+                              const has = perms.includes(permId);
                               const canToggle = isEditing && !role.is_builtin && !previewRoleId;
                               return (
-                                <div key={perm.id} onClick={() => canToggle && setEditedPerms(p => p.includes(perm.id) ? p.filter(x => x !== perm.id) : [...p, perm.id])}
+                                <div key={permId}
+                                  onClick={() => canToggle && setEditedPerms(p => p.includes(permId) ? p.filter(x => x !== permId) : [...p, permId])}
                                   className={`flex items-center gap-3 p-3 rounded-lg border transition ${has ? "bg-green-500/5 border-green-500/15" : "border-slate-800 opacity-50"} ${canToggle ? "cursor-pointer hover:border-slate-700" : "cursor-default"}`}>
                                   <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${has ? "bg-green-500 text-black" : "bg-slate-800"}`}>
                                     {has && <Check size={10} />}
                                   </div>
                                   <div>
-                                    <p className="text-xs font-medium text-white">{perm.label}</p>
-                                    <p className="text-[10px] text-slate-600">{perm.description}</p>
+                                    <p className="text-xs font-medium text-white">{label}</p>
+                                    {description && <p className="text-[10px] text-slate-600">{description}</p>}
                                   </div>
                                   {role.is_builtin && <Lock size={10} className="ml-auto text-slate-700" />}
                                 </div>
                               );
                             })}
+                            {availablePermissions.length === 0 && (
+                              <p className="col-span-2 text-slate-600 text-xs text-center py-4">No permissions data available.</p>
+                            )}
                           </div>
                           {isEditing && (
-                            <div className="px-5 pb-4 flex gap-3">
-                              <button onClick={() => setEditingRoleId(null)} className="text-xs text-slate-500 hover:text-white transition">Cancel</button>
+                            <div className="px-5 pb-4">
+                              <button onClick={() => setEditingRoleId(null)} className="text-xs text-slate-500 hover:text-white transition">Cancel editing</button>
                             </div>
                           )}
                         </div>
@@ -462,10 +562,10 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
                 </div>
               )}
 
-              {/* EVENTS — brak endpointu w API, placeholder */}
+              {/* EVENTS */}
               {tab === "events" && (
                 <div className="text-center py-16 text-slate-600 text-sm">
-                  Activity log endpoint not yet available in backend.
+                  Activity log endpoint not yet available in backend API.
                 </div>
               )}
             </>
