@@ -4,8 +4,8 @@ import {
   ShieldCheck, Users, Eye, Edit3, Trash2, Plus, ChevronRight,
   X, Check, AlertCircle, Clock, Lock, Save, Mail, Loader,
 } from "lucide-react";
-import { rolesApi, membersApi, userApi, authApi, ApiError } from "../api/client";
-import type { RepoRole, RepoMember, User as ApiUser } from "../api/client";
+import { rolesApi, membersApi, userApi, authApi, eventsApi, ApiError } from "../api/client";
+import type { RepoRole, RepoMember, User as ApiUser, RepoEvent, RepoEventKind } from "../api/client";
 import type { Page, User } from "../App";
 
 type Tab = "users" | "roles" | "events";
@@ -223,6 +223,7 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
   const [roles, setRoles] = useState<RepoRole[]>([]);
   const [members, setMembers] = useState<RepoMember[]>([]);
   const [userMap, setUserMap] = useState<Record<string, ApiUser>>({});
+  const [events, setEvents] = useState<RepoEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewRoleId, setPreviewRoleId] = useState<string | null>(null);
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
@@ -246,9 +247,14 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
     if (!repoName) return;
     setLoading(true);
     try {
-      const [r, m] = await Promise.all([rolesApi.list(repoName), membersApi.list(repoName)]);
+      const [r, m, ev] = await Promise.all([
+        rolesApi.list(repoName),
+        membersApi.list(repoName),
+        eventsApi.repoEvents(repoName).catch(() => [] as RepoEvent[]),
+      ]);
       setRoles(r);
       setMembers(m);
+      setEvents(ev);
       const ud: Record<string, ApiUser> = {};
       await Promise.all(m.map(async mem => {
         try { ud[mem.user_id] = await userApi.getById(mem.user_id); } catch { /* skip */ }
@@ -564,8 +570,40 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
 
               {/* EVENTS */}
               {tab === "events" && (
-                <div className="text-center py-16 text-slate-600 text-sm">
-                  Activity log endpoint not yet available in backend API.
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                    Repository Activity ({events.length})
+                  </h3>
+                  {events.length === 0 ? (
+                    <div className="text-center py-12 text-slate-600 text-sm">
+                      No events yet. Activity will appear here as members and roles change.
+                    </div>
+                  ) : (
+                    <div className="bg-[#161b22] border border-slate-800 rounded-xl overflow-hidden">
+                      {events.map((ev, i) => {
+                        const actorName = ev.actor_id
+                          ? (userMap[ev.actor_id]?.name ?? ev.actor_id.slice(0, 8) + "…")
+                          : "Superadmin";
+                        return (
+                          <div key={ev.id} className={`flex items-start gap-4 px-5 py-4 ${i < events.length - 1 ? "border-b border-slate-800/60" : ""}`}>
+                            <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-white font-bold text-[10px] shrink-0 mt-0.5">
+                              {ev.actor_id ? actorName[0].toUpperCase() : "⚙"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <span className="text-sm font-medium text-white">{actorName}</span>
+                                <EventTypeBadge type={ev.kind} />
+                              </div>
+                              <EventDetail kind={ev.kind} detail={ev.detail} userMap={userMap} />
+                              <p className="text-[10px] text-slate-600 mt-1.5">
+                                {new Date(ev.created_at).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -573,5 +611,98 @@ export default function ProjectManagement({ navigate, user, onLogout, currentRep
         </div>
       </main>
     </div>
+  );
+}
+
+// ── EventDetail — czytelny opis szczegółów eventu ────────────────────────────
+
+function EventDetail({
+  kind,
+  detail,
+  userMap,
+}: {
+  kind: RepoEventKind | string | undefined;
+  detail: Record<string, string> | null;
+  userMap: Record<string, { name: string; email: string }>;
+}) {
+  if (!detail) return null;
+
+  const userName = (id?: string) =>
+    id ? (userMap[id]?.name ?? <code className="text-slate-400">{id.slice(0, 8)}…</code>) : "—";
+
+  const roleName = (id?: string) =>
+    id ? <span className="font-mono text-purple-400">{id}</span> : "—";
+
+  let content: React.ReactNode = null;
+
+  switch (kind) {
+    case "member_added":
+      content = (
+        <>User <strong className="text-white">{userName(detail.user_id)}</strong> added with role {roleName(detail.role_id)}</>
+      );
+      break;
+    case "member_removed":
+      content = (
+        <>User <strong className="text-white">{userName(detail.user_id)}</strong> removed</>
+      );
+      break;
+    case "member_role_changed":
+      content = (
+        <>User <strong className="text-white">{userName(detail.user_id)}</strong> role changed: {roleName(detail.old_role_id)} → {roleName(detail.new_role_id)}</>
+      );
+      break;
+    case "ownership_transferred":
+      content = (
+        <>Ownership transferred to <strong className="text-white">{userName(detail.new_owner_id ?? detail.user_id)}</strong></>
+      );
+      break;
+    case "role_created":
+      content = <>Role <span className="font-mono text-purple-400">{detail.role_name ?? detail.role_id}</span> created</>;
+      break;
+    case "role_updated":
+      content = <>Role <span className="font-mono text-purple-400">{detail.role_name ?? detail.role_id}</span> updated</>;
+      break;
+    case "role_deleted":
+      content = <>Role <span className="font-mono text-purple-400">{detail.role_name ?? detail.role_id}</span> deleted</>;
+      break;
+    default:
+      // Fallback: pokaż surowe pola
+      content = (
+        <span className="font-mono">
+          {Object.entries(detail).map(([k, v]) => (
+            <span key={k} className="mr-3">
+              <span className="text-slate-600">{k}:</span>{" "}
+              <span className="text-slate-400">{v}</span>
+            </span>
+          ))}
+        </span>
+      );
+  }
+
+  return <p className="text-xs text-slate-400 mt-0.5">{content}</p>;
+}
+
+// ── EventTypeBadge ────────────────────────────────────────────────────────────
+
+const EVENT_CONFIG: Record<string, { label: string; color: string }> = {
+  member_added:           { label: "member added",           color: "text-green-400 bg-green-500/10 border border-green-500/20" },
+  member_removed:         { label: "member removed",         color: "text-red-400 bg-red-500/10 border border-red-500/20" },
+  ownership_transferred:  { label: "ownership transferred",  color: "text-amber-400 bg-amber-500/10 border border-amber-500/20" },
+  member_role_changed:    { label: "role changed",           color: "text-blue-400 bg-blue-500/10 border border-blue-500/20" },
+  role_created:           { label: "role created",           color: "text-purple-400 bg-purple-500/10 border border-purple-500/20" },
+  role_updated:           { label: "role updated",           color: "text-purple-400 bg-purple-500/10 border border-purple-500/20" },
+  role_deleted:           { label: "role deleted",           color: "text-red-400 bg-red-500/10 border border-red-500/20" },
+};
+
+function EventTypeBadge({ type }: { type: string | undefined }) {
+  if (!type) return null;
+  const cfg = EVENT_CONFIG[type] ?? {
+    label: type.replace(/_/g, " "),
+    color: "text-slate-400 bg-slate-700/50 border border-slate-600",
+  };
+  return (
+    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cfg.color}`}>
+      {cfg.label}
+    </span>
   );
 }

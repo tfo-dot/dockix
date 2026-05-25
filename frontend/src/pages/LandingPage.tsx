@@ -9,9 +9,10 @@ import type { MeResponse } from "../api/client";
 interface Props {
   onGuest: () => void;
   onLoginSuccess: (res: MeResponse) => void;
+  sessionExpired?: boolean;
 }
 
-export default function LandingPage({ onGuest, onLoginSuccess }: Props) {
+export default function LandingPage({ onGuest, onLoginSuccess, sessionExpired }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -93,6 +94,12 @@ export default function LandingPage({ onGuest, onLoginSuccess }: Props) {
           <div className="bg-slate-900/50 border border-slate-800 p-8 rounded-2xl">
             <h2 className="text-xl font-bold text-white mb-1">Sign in</h2>
             <p className="text-slate-500 text-sm mb-6">Log in to your Dockix account.</p>
+
+            {sessionExpired && (
+              <div className="flex items-center gap-2 text-amber-400 text-sm bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5 mb-4">
+                <AlertCircle size={14} /> Session expired. Please sign in again.
+              </div>
+            )}
 
             {error && (
               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2.5 mb-4">

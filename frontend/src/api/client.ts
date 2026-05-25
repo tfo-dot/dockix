@@ -314,3 +314,47 @@ export const membersApi = {
   remove: (repo: string, userId: string) =>
     request<void>(`/repos/${repo}/member/${userId}`, { method: "DELETE" }),
 };
+
+// ── Events ────────────────────────────────────────────────────────────────────
+
+export type RepoEventKind =
+  | "member_added"
+  | "member_removed"
+  | "ownership_transferred"
+  | "member_role_changed"
+  | "role_created"
+  | "role_updated"
+  | "role_deleted";
+
+export type AdminEventKind =
+  | "repo_cloned"
+  | "repo_clone_failed"
+  | "repo_deleted"
+  | "user_created"
+  | "user_deleted";
+
+export interface RepoEvent {
+  id: number;
+  kind: RepoEventKind;
+  repo_name: string;
+  actor_id: string | null;
+  detail: Record<string, string> | null;
+  created_at: string;
+}
+
+export interface AdminEvent {
+  id: number;
+  kind: AdminEventKind;
+  repo_name?: string;
+  actor_id: string | null;
+  detail: Record<string, string> | null;
+  created_at: string;
+}
+
+export const eventsApi = {
+  repoEvents: (repoName: string) =>
+    request<RepoEvent[]>(`/repos/${repoName}/events`),
+
+  adminEvents: () =>
+    request<AdminEvent[]>("/admin/events"),
+};

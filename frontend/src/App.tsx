@@ -48,6 +48,7 @@ export default function App() {
   const [currentRepo, setCurrentRepo] = useState<string>("");
   const [docPath, setDocPath] = useState<string>("");
   const [authLoading, setAuthLoading] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   // Przy starcie: jeśli jest token lub api key, odtwórz sesję
   useEffect(() => {
@@ -58,7 +59,9 @@ export default function App() {
           setCurrentPage("dashboard");
         })
         .catch(() => {
+          // Token wygasł lub backend zrestartował się (nowy superadmin key)
           authApi.clearAll();
+          setSessionExpired(true);
         })
         .finally(() => setAuthLoading(false));
     } else {
@@ -131,6 +134,7 @@ export default function App() {
           <LandingPage
             onGuest={() => navigate("guest-docs")}
             onLoginSuccess={handleLoginSuccess}
+            sessionExpired={sessionExpired}
           />
         );
       case "onboarding":

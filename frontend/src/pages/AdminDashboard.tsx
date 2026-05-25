@@ -3,10 +3,10 @@ import Sidebar from "../components/Sidebar";
 import {
   FolderGit2, HardDrive, Users, CheckCircle, Loader,
   AlertTriangle, Clock, Activity, Trash2, Plus, X,
-  Mail, User as UserIcon, Key, RefreshCw, Shield, Edit3, Save,
+  Mail, User as UserIcon, Key, RefreshCw, Shield, Edit3,
 } from "lucide-react";
-import { userApi, reposApi, ApiError } from "../api/client";
-import type { User as ApiUser, RepoInfo, UpdateUserRequest } from "../api/client";
+import { userApi, reposApi, eventsApi, ApiError } from "../api/client";
+import type { User as ApiUser, RepoInfo, UpdateUserRequest, AdminEvent } from "../api/client";
 import type { Page, User } from "../App";
 
 type SyncStatus = RepoInfo["status"];
@@ -174,7 +174,7 @@ function ModalButtons({ onClose, onSubmit, loading, disabled = false, label }: {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-type Tab = "users" | "repos";
+type Tab = "users" | "repos" | "events";
 
 export default function AdminDashboard({ navigate, user, onLogout }: {
   navigate: (p: Page) => void; user?: User | null; onLogout?: () => void;
@@ -182,8 +182,10 @@ export default function AdminDashboard({ navigate, user, onLogout }: {
   const [tab, setTab] = useState<Tab>("users");
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [repos, setRepos] = useState<RepoInfo[]>([]);
+  const [adminEvents, setAdminEvents] = useState<AdminEvent[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingRepos, setLoadingRepos] = useState(true);
+  const [loadingEvents, setLoadingEvents] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [editTarget, setEditTarget] = useState<ApiUser | null>(null);
@@ -202,11 +204,17 @@ export default function AdminDashboard({ navigate, user, onLogout }: {
     finally { setLoadingRepos(false); }
   }, []);
 
-  useEffect(() => { fetchUsers(); fetchRepos(); }, [fetchUsers, fetchRepos]);
+  const fetchEvents = useCallback(async () => {
+    try { setAdminEvents(await eventsApi.adminEvents()); }
+    catch (e) { console.error("events:", e); }
+    finally { setLoadingEvents(false); }
+  }, []);
+
+  useEffect(() => { fetchUsers(); fetchRepos(); fetchEvents(); }, [fetchUsers, fetchRepos, fetchEvents]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchUsers(), fetchRepos()]);
+    await Promise.all([fetchUsers(), fetchRepos(), fetchEvents()]);
     setRefreshing(false);
   };
 
@@ -273,10 +281,12 @@ export default function AdminDashboard({ navigate, user, onLogout }: {
 
           {/* Tabs */}
           <div className="flex gap-1 bg-slate-900/50 border border-slate-800 rounded-xl p-1 w-fit">
-            {(["users", "repos"] as Tab[]).map(t => (
+            {(["users", "repos", "events"] as Tab[]).map(t => (
               <button key={t} onClick={() => setTab(t)}
                 className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition ${tab === t ? "bg-slate-700 text-white" : "text-slate-500 hover:text-slate-300"}`}>
-                {t === "users" ? <><Users size={11} className="inline mr-1.5" />Users</> : <><FolderGit2 size={11} className="inline mr-1.5" />Repos</>}
+                {t === "users"  && <><Users size={11} className="inline mr-1.5" />Users</>}
+                {t === "repos"  && <><FolderGit2 size={11} className="inline mr-1.5" />Repos</>}
+                {t === "events" && <><Activity size={11} className="inline mr-1.5" />Events</>}
               </button>
             ))}
           </div>
@@ -391,9 +401,58 @@ export default function AdminDashboard({ navigate, user, onLogout }: {
             </section>
           )}
 
-          <div className="flex items-center gap-2 text-slate-700 text-xs">
-            <Activity size={12} /> Activity log endpoint not yet available in backend API.
-          </div>
+          {/* EVENTS */}
+          {tab === "events" && (
+            <section className="space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                Admin Events {!loadingEvents && `(${adminEvents.length})`}
+              </h3>
+              {loadingEvents ? (
+                <Loading text="Loading events..." />
+              ) : adminEvents.length === 0 ? (
+                <p className="text-slate-600 text-sm text-center py-8">No admin events yet.</p>
+              ) : (
+                <div className="bg-[#161b22] border border-slate-800 rounded-xl overflow-hidden">
+                  {adminEvents.map((ev, i) => {
+                    const actor = ev.actor_id
+                      ? (users.find(u => u.id === ev.actor_id)?.name ?? ev.actor_id.slice(0, 8) + "…")
+                      : "Superadmin";
+                    return (
+                      <div key={ev.id} className={`flex items-start gap-4 px-5 py-4 ${i < adminEvents.length - 1 ? "border-b border-slate-800/60" : ""}`}>
+                        <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-white font-bold text-[10px] shrink-0 mt-0.5">
+                          {ev.actor_id ? actor[0].toUpperCase() : "⚙"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="text-sm font-medium text-white">{actor}</span>
+                            <AdminEventBadge type={ev.kind} />
+                            {ev.repo_name && (
+                              <span className="text-[10px] font-mono text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">
+                                {ev.repo_name}
+                              </span>
+                            )}
+                          </div>
+                          {ev.detail && Object.keys(ev.detail).length > 0 && (
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {Object.entries(ev.detail).map(([k, v]) => (
+                                <span key={k} className="mr-3">
+                                  <span className="text-slate-600">{k}:</span>{" "}
+                                  <span className="font-mono text-slate-300">{String(v)}</span>
+                                </span>
+                              ))}
+                            </p>
+                          )}
+                          <p className="text-[10px] text-slate-600 mt-1">
+                            {new Date(ev.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
         </div>
       </main>
     </div>
@@ -418,5 +477,28 @@ function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; l
         <p className="text-[10px] text-slate-600 mt-0.5">{sub}</p>
       </div>
     </div>
+  );
+}
+
+// ── AdminEventBadge ───────────────────────────────────────────────────────────
+
+const ADMIN_EVENT_CONFIG: Record<string, { label: string; color: string }> = {
+  repo_cloned:       { label: "repo cloned",       color: "text-green-400 bg-green-500/10 border border-green-500/20" },
+  repo_clone_failed: { label: "clone failed",      color: "text-red-400 bg-red-500/10 border border-red-500/20" },
+  repo_deleted:      { label: "repo deleted",      color: "text-red-400 bg-red-500/10 border border-red-500/20" },
+  user_created:      { label: "user created",      color: "text-blue-400 bg-blue-500/10 border border-blue-500/20" },
+  user_deleted:      { label: "user deleted",      color: "text-amber-400 bg-amber-500/10 border border-amber-500/20" },
+};
+
+function AdminEventBadge({ type }: { type: string | undefined }) {
+  if (!type) return null;
+  const cfg = ADMIN_EVENT_CONFIG[type] ?? {
+    label: type.replace(/_/g, " "),
+    color: "text-slate-400 bg-slate-700/50 border border-slate-600",
+  };
+  return (
+    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cfg.color}`}>
+      {cfg.label}
+    </span>
   );
 }
