@@ -1,0 +1,45 @@
+# Disabled by default.
+# These cases document current implementation behavior that should be aligned with OpenAPI.
+
+# OpenAPI feedback expected generated_password when password is omitted.
+# Current backend returns 400.
+POST {{base_url}}/user
+x-api-key: {{api_key}}
+Content-Type: application/json
+{
+  "name": "Generated Password User {{run_id}}",
+  "email": "generated-password-{{run_id}}@example.com"
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error" exists
+
+# OpenAPI feedback expects 400 for invalid/missing inputs.
+# Current Axum extractor may return 422 for missing non-nullable fields.
+POST {{base_url}}/repos/prefetch
+x-api-key: {{api_key}}
+Content-Type: application/json
+{}
+HTTP 422
+
+POST {{base_url}}/repos
+x-api-key: {{api_key}}
+Content-Type: application/json
+{
+  "url": "{{public_repo_url}}",
+  "name": "hurl-depth-string-{{run_id}}",
+  "depth": "1"
+}
+HTTP 422
+
+# Known mismatch: PATCH /user/@me with empty JSON body
+# OpenAPI allows partial update payloads with no required properties.
+# Current backend returns 400 for empty {}.
+# Expected by strict contract interpretation: 200 OK or no-op response.
+# Current behavior: 400 Bad Request.
+
+# Known mismatch: GET /repos/{repo}/analysis without membership
+# OpenAPI feedback expected 403 Forbidden.
+# Current backend returns 404 Not Found, effectively hiding inaccessible repositories.
+# Expected by strict contract interpretation: 403 Forbidden.
+# Current behavior: 404 Not Found.

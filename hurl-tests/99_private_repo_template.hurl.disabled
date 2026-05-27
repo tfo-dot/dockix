@@ -1,0 +1,33 @@
+# Disabled by default. Do not commit a real token.
+# Configure private repo values in a local .env, never as terminal arguments.
+#
+# Example local-only .env additions:
+# private_repo_url=https://github.com/YOUR_LOGIN/dockix-private-test.git
+# private_repo_token=github_pat_...
+#
+# Do not paste tokens into chat, screenshots, README, or shell history.
+
+POST {{base_url}}/repos
+x-api-key: {{api_key}}
+Content-Type: application/json
+{
+  "url": "{{private_repo_url}}",
+  "name": "hurl-private-with-token-{{run_id}}",
+  "token": "{{private_repo_token}}",
+  "depth": 1
+}
+HTTP 202
+
+GET {{base_url}}/repos/hurl-private-with-token-{{run_id}}/analysis
+x-api-key: {{api_key}}
+[Options]
+retry: 90
+retry-interval: 1000
+HTTP 200
+
+DELETE {{base_url}}/repos/hurl-private-with-token-{{run_id}}
+x-api-key: {{api_key}}
+[Options]
+retry: 90
+retry-interval: 1000
+HTTP 204
