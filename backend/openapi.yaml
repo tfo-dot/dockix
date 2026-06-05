@@ -8,20 +8,274 @@ servers:
     description: Local development server
 
 tags:
+  - name: Authentication
+    description: Login and logout operations
+  - name: User Management
+    description: Operations for managing system users
   - name: Repository Management
-    description: Endpoints for cloning and listing local repositories
+    description: Endpoints for cloning, listing, and prefetching repositories
+  - name: Role Management
+    description: Managing roles within a specific repository
+  - name: Member Management
+    description: Managing members and their roles within a repository
   - name: Code Analysis
     description: Endpoints for parsing and analyzing repository structure
-  - name: Documentation Generation
-    description: Endpoints for generating HTML and PDF documentation
+  - name: Events
+    description: Endpoints for tracking system and repository events
 
 paths:
-  /clone:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login
+      description: Authenticates a user and returns a session token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout
+      description: Invalidates the current session token.
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Logout successful
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /user:
+    post:
+      tags:
+        - User Management
+      summary: Create user
+      description: Registers a new user. If called by a superadmin, a password can be automatically generated.
+      security:
+        - apiKeyAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /user/list:
+    get:
+      tags:
+        - User Management
+      summary: List all users
+      description: Returns a list of all registered users. Superadmin access required.
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: A list of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /user/@me:
+    get:
+      tags:
+        - User Management
+      summary: Get current user info
+      description: Returns information about the authenticated user or superadmin status.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/User'
+                  - $ref: '#/components/schemas/SuperadminInfo'
+    patch:
+      tags:
+        - User Management
+      summary: Update current user
+      description: Updates the authenticated user's profile.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeRequest'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /user/{id}:
+    get:
+      tags:
+        - User Management
+      summary: Get user by ID
+      description: Returns information about a specific user.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+        - User Management
+      summary: Update user by ID
+      description: Updates a specific user's information. Superadmin access required.
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - User Management
+      summary: Delete user
+      description: Deletes a user and their sessions. Superadmin access required.
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: User deleted successfully
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /repos/prefetch:
+    post:
+      tags:
+        - Repository Management
+      summary: Prefetch repository info
+      description: Fetches branches and tags from a remote git repository before cloning.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrefetchRequest'
+      responses:
+        '200':
+          description: Repository info fetched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrefetchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /repos:
+    get:
+      tags:
+        - Repository Management
+      summary: List repositories
+      description: Returns a list of repositories the user has access to.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: A list of repositories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RepoInfo'
     post:
       tags:
         - Repository Management
       summary: Clone a repository
-      description: Clones a remote git repository into the local base directory.
+      description: Starts a background process to clone a git repository.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -29,117 +283,560 @@ paths:
             schema:
               $ref: '#/components/schemas/CloneRequest'
       responses:
-        '200':
-          description: Repository cloned successfully
+        '202':
+          description: Clone process started
           content:
             application/json:
               schema:
                 type: string
-                example: "Repository cloned successfully"
-        '400':
-          description: Directory already exists or invalid payload
+                example: "Clone started, check GET /repos for status"
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
-  /repos:
-    get:
+  /repos/{repo_name}:
+    delete:
       tags:
         - Repository Management
-      summary: List available repositories
-      description: Returns a list of all repositories currently stored in the base directory.
+      summary: Delete a repository
+      description: Deletes the repository directory and its metadata. Requires Admin role or Superadmin.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Repository deleted successfully
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot delete while cloning is in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /repos/{repo_name}/analysis:
+    get:
+      tags:
+        - Code Analysis
+      summary: Analyze repository
+      description: Scans the repository and extracts classes, functions, and docstrings.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
       responses:
         '200':
-          description: A list of repository names
+          description: Analysis completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParsedRepo'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /repos/{repo_name}/events:
+    get:
+      tags:
+        - Events
+      summary: List repository events
+      description: Returns events associated with a specific repository. Visibility depends on user permissions.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of repository events
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  type: string
-                example: ["dockix", "my-python-project"]
-
-  /analyze/{repo_name}:
-    get:
-      tags:
-        - Code Analysis
-      summary: Basic repository analysis
-      description: Analyzes the directory structure of the specified repository.
-      parameters:
-        - in: path
-          name: repo_name
-          required: true
-          schema:
-            type: string
-          description: The name of the local repository to analyze
-      responses:
-        '200':
-          description: Successful analysis
-          content:
-            application/json:
-              schema:
-                type: object
+                  $ref: '#/components/schemas/RepoEvent'
         '404':
-          description: Repository not found
+          $ref: '#/components/responses/NotFound'
 
-  /analyze/{repo_name}/elements:
+  /repos/{repo_name}/role:
     get:
       tags:
-        - Code Analysis
-      summary: Extract Python code elements
-      description: Scans for .py files, parses the syntax, and returns detected classes, methods, and extracted docstrings.
+        - Role Management
+      summary: List repository roles
+      description: Returns all roles defined for the specified repository.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
       parameters:
         - in: path
           name: repo_name
           required: true
           schema:
             type: string
-          description: The name of the local repository
       responses:
         '200':
-          description: Extracted code elements
+          description: A list of roles
           content:
             application/json:
               schema:
-                type: object
-
-  /analyze/{repo_name}/diagram:
-    get:
-      tags:
-        - Code Analysis
-      summary: Get class structure diagram data
-      description: Provides structural relationship data required to visualize class diagrams for the analyzed code.
-      parameters:
-        - in: path
-          name: repo_name
-          required: true
-          schema:
-            type: string
-          description: The name of the local repository
-      responses:
-        '200':
-          description: Diagram relationship data
-          content:
-            application/json:
-              schema:
-                type: object
-
-  /docs/{repo_name}/html:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RepoRole'
     post:
       tags:
-        - Documentation Generation
-      summary: Generate HTML documentation
-      description: Triggers the generation of the HTML documentation structure based on the extracted code elements.
+        - Role Management
+      summary: Create repository role
+      description: Creates a new custom role for the repository. Requires Manage Roles permission.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
       parameters:
         - in: path
           name: repo_name
           required: true
           schema:
             type: string
-          description: The name of the local repository
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoleRequest'
+      responses:
+        '201':
+          description: Role created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepoRole'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /repos/{repo_name}/role/{role_id}:
+    patch:
+      tags:
+        - Role Management
+      summary: Update repository role
+      description: Updates an existing custom role. Built-in roles cannot be modified.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: role_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
       responses:
         '200':
-          description: HTML documentation generated successfully
+          description: Role updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepoRole'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Role Management
+      summary: Delete repository role
+      description: Deletes a custom role. Cannot delete if members are assigned to it.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: role_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Role deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /repos/{repo_name}/member:
+    get:
+      tags:
+        - Member Management
+      summary: List repository members
+      description: Returns all members of the repository.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RepoMember'
+    post:
+      tags:
+        - Member Management
+      summary: Add repository member
+      description: Adds a user to the repository with a specific role. Requires Manage Members permission.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMemberRequest'
+      responses:
+        '204':
+          description: Member added successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /repos/{repo_name}/member/{user_id}:
+    patch:
+      tags:
+        - Member Management
+      summary: Update repository member
+      description: Updates a member's role or transfers repository ownership.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMemberRequest'
+      responses:
+        '204':
+          description: Member updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Member Management
+      summary: Remove repository member
+      description: Removes a user from the repository.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: repo_name
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Member removed successfully
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/events:
+    get:
+      tags:
+        - Events
+      summary: List all system events
+      description: Returns all global and repository events. Superadmin access required.
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: A list of system events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RepoEvent'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Token
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+
+  responses:
+    BadRequest:
+      description: Invalid input or request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid authorization
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Resource already exists or state conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: Too many requests or concurrent operations
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Semantic errors in the request (e.g., parse errors)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
   schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+
+    User:
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - created_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        created_at:
+          type: string
+          format: date-time
+
+    SuperadminInfo:
+      type: object
+      required:
+        - role
+      properties:
+        role:
+          type: string
+          enum: [superadmin]
+
+    CreateUserRequest:
+      type: object
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    CreateUserResponse:
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - created_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        created_at:
+          type: string
+          format: date-time
+        generated_password:
+          type: string
+
+    UpdateMeRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+
+    PrefetchRequest:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+        token:
+          type: string
+
+    PrefetchResponse:
+      type: object
+      required:
+        - branches
+        - tags
+      properties:
+        default_branch:
+          type: string
+          nullable: true
+        branches:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+
     CloneRequest:
       type: object
       required:
@@ -148,9 +845,303 @@ components:
       properties:
         url:
           type: string
-          description: The URL of the git repository to clone
-          example: "https://github.com/example/repo.git"
         name:
           type: string
-          description: The target directory name for the cloned repository
-          example: "example-repo"
+        token:
+          type: string
+        depth:
+          type: integer
+          default: 1
+        branch:
+          type: string
+
+    RepoInfo:
+      type: object
+      required:
+        - name
+        - path
+        - status
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        status:
+          $ref: '#/components/schemas/RepoStatus'
+
+    RepoStatus:
+      oneOf:
+        - $ref: '#/components/schemas/RepoStatusReady'
+        - $ref: '#/components/schemas/RepoStatusCloning'
+        - $ref: '#/components/schemas/RepoStatusSyncing'
+        - $ref: '#/components/schemas/RepoStatusCloneFailed'
+        - $ref: '#/components/schemas/RepoStatusSyncFailed'
+      discriminator:
+        propertyName: status
+        mapping:
+          ready: '#/components/schemas/RepoStatusReady'
+          cloning: '#/components/schemas/RepoStatusCloning'
+          syncing: '#/components/schemas/RepoStatusSyncing'
+          clone_failed: '#/components/schemas/RepoStatusCloneFailed'
+          sync_failed: '#/components/schemas/RepoStatusSyncFailed'
+
+    RepoStatusReady:
+      type: object
+      required:
+        - status
+        - last_synced_at
+      properties:
+        status:
+          type: string
+          enum: [ready]
+        last_synced_at:
+          type: string
+          format: date-time
+
+    RepoStatusCloning:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [cloning]
+
+    RepoStatusSyncing:
+      type: object
+      required:
+        - status
+        - last_synced_at
+      properties:
+        status:
+          type: string
+          enum: [syncing]
+        last_synced_at:
+          type: string
+          format: date-time
+
+    RepoStatusCloneFailed:
+      type: object
+      required:
+        - status
+        - error
+      properties:
+        status:
+          type: string
+          enum: [clone_failed]
+        error:
+          type: string
+
+    RepoStatusSyncFailed:
+      type: object
+      required:
+        - status
+        - last_synced_at
+        - error
+        - failed_at
+      properties:
+        status:
+          type: string
+          enum: [sync_failed]
+        last_synced_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+        failed_at:
+          type: string
+          format: date-time
+
+    RepoRole:
+      type: object
+      required:
+        - id
+        - name
+        - permissions
+        - is_builtin
+        - level
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+        is_builtin:
+          type: boolean
+        level:
+          type: integer
+
+    RepoMember:
+      type: object
+      required:
+        - user_id
+        - is_owner
+        - joined_at
+      properties:
+        user_id:
+          type: string
+        role_id:
+          type: string
+          nullable: true
+        is_owner:
+          type: boolean
+        joined_at:
+          type: string
+          format: date-time
+
+    CreateRoleRequest:
+      type: object
+      required:
+        - name
+        - permissions
+      properties:
+        name:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+        level:
+          type: integer
+
+    UpdateRoleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+        level:
+          type: integer
+
+    AddMemberRequest:
+      type: object
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+        role_id:
+          type: string
+
+    UpdateMemberRequest:
+      type: object
+      properties:
+        role_id:
+          type: string
+        transfer_ownership:
+          type: boolean
+
+    ParsedRepo:
+      type: object
+      required:
+        - repo_name
+        - files
+      properties:
+        repo_name:
+          type: string
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParsedFile'
+
+    ParsedFile:
+      type: object
+      required:
+        - file_path
+        - language
+        - classes
+        - functions
+      properties:
+        file_path:
+          type: string
+        language:
+          type: string
+        classes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClassDoc'
+        functions:
+          type: array
+          items:
+            $ref: '#/components/schemas/FunctionDoc'
+
+    ClassDoc:
+      type: object
+      required:
+        - name
+        - methods
+      properties:
+        name:
+          type: string
+        docstring:
+          type: string
+          nullable: true
+        methods:
+          type: array
+          items:
+            $ref: '#/components/schemas/FunctionDoc'
+
+    FunctionDoc:
+      type: object
+      required:
+        - name
+        - parameters
+      properties:
+        name:
+          type: string
+        docstring:
+          type: string
+          nullable: true
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterDoc'
+        return_type:
+          type: string
+          nullable: true
+
+    ParameterDoc:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        type_annotation:
+          type: string
+          nullable: true
+        default_value:
+          type: string
+          nullable: true
+
+    RepoEvent:
+      type: object
+      required:
+        - id
+        - kind
+        - detail
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          type: string
+        repo_name:
+          type: string
+          nullable: true
+        actor_id:
+          type: string
+          nullable: true
+        detail:
+          type: object
+          description: Event-specific details as a JSON object
+        created_at:
+          type: string
+          format: date-time

@@ -92,15 +92,15 @@ pub async fn get_me_handler(
     Extension(auth): Extension<AuthUser>,
     State(config): State<Arc<AppConfig>>,
 ) -> Result<impl IntoResponse, AppError> {
-    let AuthUser::User { id } = auth else {
-        return Err(AppError::Forbidden);
-    };
-
-    let db = Arc::clone(&config.db);
-    let user = tokio::task::spawn_blocking(move || db_get_user(&db.lock().unwrap(), &id))
-        .await??;
-
-    Ok(Json(user))
+    match auth {
+        AuthUser::Superadmin => Ok(Json(serde_json::json!({ "role": "superadmin" })).into_response()),
+        AuthUser::User { id } => {
+            let db = Arc::clone(&config.db);
+            let user = tokio::task::spawn_blocking(move || db_get_user(&db.lock().unwrap(), &id))
+                .await??;
+            Ok(Json(user).into_response())
+        }
+    }
 }
 
 pub async fn patch_me_handler(

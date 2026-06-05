@@ -1,100 +1,157 @@
-import React, { useState } from "react";
-import { Computer, Search, Eye } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import LandingPage from "./pages/LandingPage";
+import Dashboard from "./pages/Dashboard";
+import Settings from "./pages/Settings";
+import Onboarding from "./pages/Onboarding";
+import Indexing from "./pages/Indexing";
+import Documentation from "./pages/Documentation";
+import ProjectManagement from "./pages/ProjectManagement";
+import AdminDashboard from "./pages/AdminDashboard";
+import Project from "./pages/Project";
+import GuestDocumentation from "./pages/GuestDocumentation";
+import { authApi, userApi, isSuperadminResponse } from "./api/client";
+import type { MeResponse } from "./api/client";
 
-import Log from "./components/Log.tsx";
-import Sidebar from "./components/Sidebar.tsx";
-import ProjectCard, { type Project } from "./components/ProjectCard.tsx";
+export type Page =
+  | "landing" | "onboarding" | "indexing" | "dashboard" | "project"
+  | "documentation" | "project-management" | "settings" | "admin" | "guest-docs";
 
-const MOCK_PROJECTS: Project[] = [
-  {
-    id: "1",
-    name: "kernel-module-xyz",
-    branch: "main",
-    status: "synced",
-    lastSync: "2m ago",
-  },
-  {
-    id: "2",
-    name: "tree-sitter-parser",
-    branch: "develop",
-    status: "indexing",
-    lastSync: "Now",
-  },
-  {
-    id: "3",
-    name: "legacy-api-docs",
-    branch: "v1.0",
-    status: "error",
-    lastSync: "1h ago",
-  },
-];
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "user";
+};
 
-export default function Dashboard() {
-  const [isPreviewMode, setIsPreviewMode] = useState(false);
+// Superadmin placeholder gdy /user/@me zwraca tylko {role:"superadmin"}
+const SUPERADMIN_USER: User = {
+  id: "superadmin",
+  name: "Superadmin",
+  email: "",
+  role: "admin",
+};
 
-  return (
-    <div className="min-h-screen bg-[#0f1115] text-slate-300 font-sans selection:bg-blue-500/30">
-      {/* 1. IMPERSONATION BAR (Audit/Preview) */}
-      {isPreviewMode && (
-        <div className="bg-amber-500 text-black px-4 py-1.5 text-center text-sm font-bold flex justify-center items-center gap-4">
-          <Eye size={16} /> VIEWING AS GUEST (READ-ONLY)
-          <button
-            onClick={() => setIsPreviewMode(false)}
-            className="bg-black/20 hover:bg-black/30 px-2 py-0.5 rounded text-xs transition"
-          >
-            Exit Preview
-          </button>
-        </div>
-      )}
+function pageFromHash(hash: string): Page | null {
+  if (hash.startsWith("#/docs/")) return "documentation";
+  if (hash.startsWith("#/guest/")) return "guest-docs";
+  return null;
+}
 
-      <div className="flex">
-        <Sidebar />
+function meToUser(res: MeResponse): User {
+  if (isSuperadminResponse(res)) return SUPERADMIN_USER;
+  return { id: res.id, name: res.name, email: res.email, role: "user" };
+}
 
-        <main className="flex-1 p-8">
-          {/* Header Area */}
-          <header className="flex justify-between items-center mb-10">
-            <div>
-              <h1 className="text-2xl font-bold text-white">
-                Project Dashboard
-              </h1>
-              <p className="text-slate-500 text-sm">
-                Managing {MOCK_PROJECTS.length} indexed repositories.
-              </p>
-            </div>
+export default function App() {
+  const [currentPage, setCurrentPage] = useState<Page>("landing");
+  const [user, setUser] = useState<User | null>(null);
+  const [currentRepo, setCurrentRepo] = useState<string>("");
+  const [docPath, setDocPath] = useState<string>("");
+  const [authLoading, setAuthLoading] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
-            <div className="flex gap-3">
-              <div className="relative">
-                <Search
-                  className="absolute left-3 top-2.5 text-slate-500"
-                  size={16}
-                />
-                <input
-                  type="text"
-                  placeholder="Ctrl + K to search..."
-                  className="bg-slate-900 border border-slate-800 rounded-md pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-blue-500 transition w-64"
-                />
-              </div>
-              <button
-                onClick={() => setIsPreviewMode(true)}
-                className="flex items-center gap-2 px-4 py-2 border border-slate-700 rounded-md text-sm hover:bg-slate-800 transition"
-              >
-                <Eye size={16} /> Preview Mode
-              </button>
-              <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-sm font-medium transition">
-                <Computer size={16} /> Add Repository
-              </button>
-            </div>
-          </header>
+  // Przy starcie: jeśli jest token lub api key, odtwórz sesję
+  useEffect(() => {
+    if (authApi.isLoggedIn()) {
+      userApi.me()
+        .then((res: MeResponse) => {
+          setUser(meToUser(res));
+          setCurrentPage("dashboard");
+        })
+        .catch(() => {
+          // Token wygasł lub backend zrestartował się (nowy superadmin key)
+          authApi.clearAll();
+          setSessionExpired(true);
+        })
+        .finally(() => setAuthLoading(false));
+    } else {
+      setAuthLoading(false);
+    }
+  }, []);
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {MOCK_PROJECTS.map((proj) => (
-              <ProjectCard project={proj} key={proj.id} />
-            ))}
-          </div>
+  // Hash routing
+  useEffect(() => {
+    const onHashChange = () => {
+      const hash = window.location.hash;
+      const page = pageFromHash(hash);
+      if (!page) return;
+      const path = hash.startsWith("#/docs/")
+        ? hash.slice("#/docs/".length)
+        : hash.startsWith("#/guest/")
+        ? hash.slice("#/guest/".length)
+        : "";
+      setCurrentPage(prev => prev !== page ? page : prev);
+      if (path) setDocPath(path);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    onHashChange();
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
-          <Log />
-        </main>
+  const navigate = (page: Page, path?: string) => {
+    if (page === "documentation" && path) {
+      window.location.hash = `/docs/${path}`;
+      setDocPath(path);
+    } else if (page === "guest-docs") {
+      window.location.hash = `/guest/${path ?? ""}`;
+    } else {
+      window.location.hash = "";
+    }
+    setCurrentPage(page);
+  };
+
+  const handleLoginSuccess = (res: MeResponse) => {
+    setUser(meToUser(res));
+    navigate("dashboard");
+  };
+
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      authApi.clearAll();
+    } finally {
+      setUser(null);
+      setCurrentRepo("");
+      navigate("landing");
+    }
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0f1115] flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
       </div>
-    </div>
-  );
+    );
+  }
+
+  const commonProps = { navigate, user, onLogout: handleLogout, currentRepo, setCurrentRepo };
+
+  const renderPage = () => {
+    switch (currentPage) {
+      case "landing":
+        return (
+          <LandingPage
+            onGuest={() => navigate("guest-docs")}
+            onLoginSuccess={handleLoginSuccess}
+            sessionExpired={sessionExpired}
+          />
+        );
+      case "onboarding":
+        return <Onboarding onComplete={(repoName: string) => { setCurrentRepo(repoName); navigate("indexing"); }} />;
+      case "indexing":
+        return <Indexing repoName={currentRepo} onComplete={() => navigate("project-management")} />;
+      case "dashboard":        return <Dashboard {...commonProps} />;
+      case "project":          return <Project {...commonProps} />;
+      case "documentation":    return <Documentation {...commonProps} docPath={docPath} setDocPath={setDocPath} />;
+      case "project-management": return <ProjectManagement {...commonProps} />;
+      case "settings":         return <Settings {...commonProps} />;
+      case "admin":            return <AdminDashboard {...commonProps} />;
+      case "guest-docs":       return <GuestDocumentation navigate={navigate} />;
+      default:
+        return <LandingPage onGuest={() => navigate("guest-docs")} onLoginSuccess={handleLoginSuccess} />;
+    }
+  };
+
+  return <>{renderPage()}</>;
 }
