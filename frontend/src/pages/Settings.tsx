@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import Sidebar from "../components/Sidebar";
-import { Bell, Eye, Cloud, Mail, ShieldCheck, Camera, Loader, Check, Copy } from "lucide-react";
+import { Mail, ShieldCheck, Camera, Loader, Check, Copy } from "lucide-react";
 import { userApi } from "../api/client";
 import type { Page, User } from "../App";
 
@@ -151,37 +151,8 @@ export default function Settings({ navigate, user, onLogout }: Props) {
               </div>
             </div>
           </section>
-
-          {/* Preferences (local only — no backend endpoint) */}
-          <section className="space-y-4">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">Preferences</h3>
-            <div className="bg-[#161b22] border border-slate-800 rounded-xl overflow-hidden">
-              <SettingsToggle icon={<Bell size={16} />} label="Email Notifications" description="Receive updates about indexing status" defaultChecked />
-              <SettingsToggle icon={<Eye size={16} />} label="Public Profile" description="Allow others to see your documentation activity" />
-              <SettingsToggle icon={<Cloud size={16} />} label="Auto-sync Repositories" description="Periodically check for new commits" defaultChecked />
-            </div>
-            <p className="text-[10px] text-slate-600 ml-1">Preferences are stored locally — backend support coming soon.</p>
-          </section>
         </div>
       </main>
-    </div>
-  );
-}
-
-function SettingsToggle({ icon, label, description, defaultChecked = false }: {
-  icon: React.ReactNode; label: string; description: string; defaultChecked?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between p-4 border-b border-slate-800 last:border-0">
-      <div className="flex gap-4">
-        <div className="text-slate-500 mt-0.5">{icon}</div>
-        <div>
-          <p className="text-white font-medium text-sm">{label}</p>
-          <p className="text-xs text-slate-500">{description}</p>
-        </div>
-      </div>
-      <input type="checkbox" defaultChecked={defaultChecked}
-        className="w-10 h-5 bg-slate-700 rounded-full appearance-none checked:bg-green-500 cursor-pointer transition-colors" />
     </div>
   );
 }

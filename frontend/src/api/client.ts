@@ -214,7 +214,7 @@ export const userApi = {
   /** GET /user/@me — zwraca User lub {role:"superadmin"} */
   me: () => request<MeResponse>("/user/@me"),
 
-  /** POST /user — wymaga x-api-key (superadmin) */
+  /** POST /user — publiczna rejestracja LUB tworzenie przez superadmina (x-api-key) */
   create: (data: CreateUserRequest) =>
     request<CreateUserResponse>("/user", {
       method: "POST",

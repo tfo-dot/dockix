@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   Terminal, Activity, Layers, Table as TableIcon,
-  ArrowRight, Eye, Loader, AlertCircle, Key, ChevronDown,
+  ArrowRight, Eye, Loader, AlertCircle, Key, ChevronDown, CheckCircle,
 } from "lucide-react";
 import { authApi, userApi } from "../api/client";
 import type { MeResponse } from "../api/client";
@@ -12,9 +12,18 @@ interface Props {
   sessionExpired?: boolean;
 }
 
+type Mode = "signin" | "signup";
+
 export default function LandingPage({ onGuest, onLoginSuccess, sessionExpired }: Props) {
+  const [mode, setMode] = useState<Mode>("signin");
+
+  // Wspólne pola
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Pola rejestracji
+  const [name, setName] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,6 +32,12 @@ export default function LandingPage({ onGuest, onLoginSuccess, sessionExpired }:
   const [apiKey, setApiKey] = useState("");
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+
+  const resetFields = () => {
+    setError(null);
+    setPassword("");
+    setConfirmPassword("");
+  };
 
   const handleLogin = async () => {
     if (!email || !password) return;
@@ -38,6 +53,37 @@ export default function LandingPage({ onGuest, onLoginSuccess, sessionExpired }:
     }
   };
 
+  const handleSignup = async () => {
+    if (!name || !email || !password) return;
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+    setLoading(true); setError(null);
+    try {
+      // 1. Utwórz konto (publiczna rejestracja — endpoint działa bez auth)
+      await userApi.create({ name, email, password });
+      // 2. Automatyczny login utworzonymi danymi
+      await authApi.login(email, password);
+      const me = await userApi.me();
+      onLoginSuccess(me);
+    } catch (e) {
+      // 409 = email zajęty, 400 = błędne dane
+      const msg = e instanceof Error ? e.message : "Registration failed";
+      setError(
+        msg.toLowerCase().includes("conflict") || msg.includes("409")
+          ? "An account with this email already exists."
+          : msg
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleApiKeyLogin = async () => {
     if (!apiKey.trim()) return;
     setApiKeyLoading(true); setApiKeyError(null);
@@ -47,7 +93,6 @@ export default function LandingPage({ onGuest, onLoginSuccess, sessionExpired }:
         setApiKeyError("Key is valid but does not have superadmin access.");
         return;
       }
-      // Pobierz dane superadmina
       const me = await userApi.me();
       onLoginSuccess(me);
     } catch (e) {
@@ -56,6 +101,11 @@ export default function LandingPage({ onGuest, onLoginSuccess, sessionExpired }:
       setApiKeyLoading(false);
     }
   };
+
+  const submit = mode === "signin" ? handleLogin : handleSignup;
+  const canSubmit = mode === "signin"
+    ? Boolean(email && password)
+    : Boolean(name && email && password && confirmPassword);
 
   return (
     <div className="min-h-screen bg-[#0f1115] text-slate-300 font-sans selection:bg-green-500/30">
@@ -89,13 +139,30 @@ export default function LandingPage({ onGuest, onLoginSuccess, sessionExpired }:
           </div>
         </div>
 
-        {/* Right: Login */}
+        {/* Right: Auth */}
         <div className="flex flex-col gap-5">
           <div className="bg-slate-900/50 border border-slate-800 p-8 rounded-2xl">
-            <h2 className="text-xl font-bold text-white mb-1">Sign in</h2>
-            <p className="text-slate-500 text-sm mb-6">Log in to your Dockix account.</p>
+            {/* Tab switcher */}
+            <div className="flex gap-1 bg-[#0d1117] border border-slate-800 rounded-xl p-1 mb-6">
+              <button
+                onClick={() => { setMode("signin"); resetFields(); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${mode === "signin" ? "bg-slate-700 text-white" : "text-slate-500 hover:text-slate-300"}`}
+              >
+                Sign in
+              </button>
+              <button
+                onClick={() => { setMode("signup"); resetFields(); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${mode === "signup" ? "bg-slate-700 text-white" : "text-slate-500 hover:text-slate-300"}`}
+              >
+                Sign up
+              </button>
+            </div>
 
-            {sessionExpired && (
+            <p className="text-slate-500 text-sm mb-6">
+              {mode === "signin" ? "Log in to your Dockix account." : "Create a new Dockix account."}
+            </p>
+
+            {sessionExpired && mode === "signin" && (
               <div className="flex items-center gap-2 text-amber-400 text-sm bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5 mb-4">
                 <AlertCircle size={14} /> Session expired. Please sign in again.
               </div>
@@ -108,28 +175,57 @@ export default function LandingPage({ onGuest, onLoginSuccess, sessionExpired }:
             )}
 
             <div className="space-y-3 mb-5">
+              {/* Name — tylko przy rejestracji */}
+              {mode === "signup" && (
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Name</label>
+                  <input type="text" value={name} onChange={e => setName(e.target.value)}
+                    placeholder="Your name"
+                    className="w-full bg-[#0d1117] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-green-500 transition-colors" />
+                </div>
+              )}
+
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Email</label>
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  onKeyDown={e => e.key === "Enter" && handleLogin()}
+                  onKeyDown={e => e.key === "Enter" && submit()}
                   className="w-full bg-[#0d1117] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-green-500 transition-colors" />
               </div>
+
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Password</label>
                 <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  onKeyDown={e => e.key === "Enter" && handleLogin()}
+                  placeholder={mode === "signup" ? "At least 6 characters" : "••••••••"}
+                  onKeyDown={e => e.key === "Enter" && submit()}
                   className="w-full bg-[#0d1117] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-green-500 transition-colors" />
               </div>
+
+              {/* Confirm password — tylko przy rejestracji */}
+              {mode === "signup" && (
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">Confirm Password</label>
+                  <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                    placeholder="Repeat password"
+                    onKeyDown={e => e.key === "Enter" && submit()}
+                    className={`w-full bg-[#0d1117] border rounded-xl px-4 py-3 text-white text-sm focus:outline-none transition-colors ${
+                      confirmPassword && password !== confirmPassword
+                        ? "border-red-500/50 focus:border-red-500"
+                        : "border-slate-700 focus:border-green-500"
+                    }`} />
+                  {confirmPassword && password === confirmPassword && (
+                    <p className="text-[10px] text-green-400 mt-1 flex items-center gap-1"><CheckCircle size={10} /> Passwords match</p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col gap-3">
-              <button onClick={handleLogin} disabled={loading || !email || !password}
+              <button onClick={submit} disabled={loading || !canSubmit}
                 className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 px-6 rounded-xl transition flex items-center justify-center gap-2 group">
                 {loading
-                  ? <><Loader size={16} className="animate-spin" /> Signing in...</>
-                  : <>Sign in <ArrowRight size={16} className="group-hover:translate-x-1 transition" /></>}
+                  ? <><Loader size={16} className="animate-spin" /> {mode === "signin" ? "Signing in..." : "Creating account..."}</>
+                  : <>{mode === "signin" ? "Sign in" : "Create account"} <ArrowRight size={16} className="group-hover:translate-x-1 transition" /></>}
               </button>
               <button onClick={onGuest}
                 className="w-full border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white font-medium py-3 px-6 rounded-xl transition flex items-center justify-center gap-2">
